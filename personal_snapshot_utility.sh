@@ -220,7 +220,9 @@ excludes_root=(
     /boot/efi
 )
 
-excludes_home=( )
+excludes_home=(
+    
+)
 
 if [ ! -d "$dest_base" ]; then
     echo "Destination $dest_base not found. Check mount point." >&2
@@ -334,23 +336,23 @@ done
 
 rsync_opts+=( "$source" "$snapshot_dir" )
 
-rsync_cmd=( ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" )
-
-cmd_str="${rsync_cmd[*]}"
-if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then
-    printf 'Command: %s\n' "$cmd_str" >>"$logfile" || true
-    if [ -t 1 ]; then
-        printf 'Command: \033[1m%s\033[0m\n' "$cmd_str"
-    else
-        printf 'Command: %s\n' "$cmd_str"
-    fi
-else
-    if [ -t 1 ]; then
-        printf 'Command: \033[1m%s\033[0m\n' "$cmd_str"
-    else
-        printf 'Command: %s\n' "$cmd_str"
-    fi
-fi
+#rsync_cmd=( ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" )
+#
+#cmd_str="${rsync_cmd[*]}"
+#if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then
+#    printf 'Command: %s\n' "$cmd_str" >>"$logfile" || true
+#    if [ -t 1 ]; then
+#        printf 'Command: \033[1m%s\033[0m\n' "$cmd_str"
+#    else
+#        printf 'Command: %s\n' "$cmd_str"
+#    fi
+#else
+#    if [ -t 1 ]; then
+#        printf 'Command: \033[1m%s\033[0m\n' "$cmd_str"
+#    else
+#        printf 'Command: %s\n' "$cmd_str"
+#    fi
+#fi
 
 human_size() {
     bytes="$1"
