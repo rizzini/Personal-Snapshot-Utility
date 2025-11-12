@@ -446,7 +446,27 @@ summarize_rsync_output() {
 filter_rsync_output() {
     f="$1"
     if [ "$list_files" -eq 1 ]; then
-        output=$(awk '($1 ~ /^[0-9]+$/) { size=$1; name=""; for (i=2;i<=NF;i++) name = name (i>2?" ":"") $i; cmd = "numfmt --to=iec --suffix=B --format=\"%.2f\" " size; cmd | getline hsize; close(cmd); print hsize "  /" name }' "$f") # dry list
+        output=$(awk '
+            function human_readable(bytes) {
+                if (bytes == 0) return "0 B"
+                units = "B KB MB GB TB PB"
+                scale = 1024
+                i = 1
+                while (bytes >= scale && i < 7) {
+                    bytes = bytes / scale
+                    i++
+                }
+                split(units, u, " ")
+                return sprintf("%.2f %s", bytes, u[i])
+            }
+            ($1 ~ /^[0-9]+$/) {
+                size=$1
+                name=""
+                for (i=2;i<=NF;i++) name = name (i>2?" ":"") $i
+                hsize = human_readable(size)
+                print hsize "  /" name
+            }
+        ' "$f") # dry list
         echo "$output"
     else
         output=$(grep -vE '(^[[:space:]]*(Number of files:|Number of created files:|Number of deleted files:|Number of regular files transferred:|Total file size:|Total transferred file size:|Literal data:|Matched data:|File list size:|File list generation time:|File list transfer time:|Total bytes sent:|Total bytes received:|sent |speedup|total size is|\[.*\].*))' "$f" || true)
