@@ -336,24 +336,6 @@ done
 
 rsync_opts+=( "$source" "$snapshot_dir" )
 
-#rsync_cmd=( ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" )
-#
-#cmd_str="${rsync_cmd[*]}"
-#if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then
-#    printf 'Command: %s\n' "$cmd_str" >>"$logfile" || true
-#    if [ -t 1 ]; then
-#        printf 'Command: \033[1m%s\033[0m\n' "$cmd_str"
-#    else
-#        printf 'Command: %s\n' "$cmd_str"
-#    fi
-#else
-#    if [ -t 1 ]; then
-#        printf 'Command: \033[1m%s\033[0m\n' "$cmd_str"
-#    else
-#        printf 'Command: %s\n' "$cmd_str"
-#    fi
-#fi
-
 human_size() {
     bytes="$1"
     if command -v numfmt >/dev/null 2>&1; then
@@ -475,7 +457,6 @@ filter_rsync_output() {
 }
 
 if [ "$dry_run" -eq 1 ]; then
-    log "Estimating size of files to copy (approx)."
     tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
     if [ "$list_files" -eq 1 ]; then
         ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" -i --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry list
@@ -553,7 +534,6 @@ if [ "$dry_run" -eq 1 ]; then
     exit 0
 fi
 
-log "Starting real backup in: $snapshot_dir"
 tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
 
 set +e
