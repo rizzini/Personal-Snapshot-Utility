@@ -315,9 +315,6 @@ for e in "${du_excludes[@]}"; do
 done
 du_cmd+=("$source")
 
-req_bytes=$("${du_cmd[@]}" 2>/dev/null | awk '{print $1}') || req_bytes=0 # kept for debugging purposes only
-avail_bytes=$(df --output=avail -B1 "$dest_base" | tail -n1) # kept for debugging purposes only
-
 rsync_opts=( -aHAX --numeric-ids --delete --delete-after --partial --partial-dir=.rsync-partial --no-compress --itemize-changes --progress --stats --one-file-system )
 
 if [ -d "$dest_base/last" ]; then
@@ -337,19 +334,17 @@ done
 rsync_opts+=( "$source" "$snapshot_dir" )
 
 human_size() {
-    bytes="$1"
     if command -v numfmt >/dev/null 2>&1; then
-        numfmt --to=iec --suffix=B --format="%.2f" "$bytes" 2>/dev/null || printf "%s B" "$bytes"
+        numfmt --to=iec --suffix=B --format="%.2f" "$1" 2>/dev/null || printf "%s B" "$1"
     else
         echo 'numfmt missing..'
     fi
 }
 
 summarize_rsync_output() {
-    f="$1"
-    transferred_count=$(wc -l < "$f")
+    transferred_count=$(wc -l < "$1")
 
-    total_bytes=$(awk '{sum += $1} END{ if (sum>0) printf "%.0f", sum; else print 0 }' "$f")
+    total_bytes=$(awk '{sum += $1} END{ if (sum>0) printf "%.0f", sum; else print 0 }' "$1")
     
     has_bytes=$(awk -v n="$total_bytes" 'BEGIN{print (n > 0) ? 1 : 0}')
     rsync_total_bytes="$total_bytes"
@@ -426,7 +421,6 @@ summarize_rsync_output() {
 }
 
 filter_rsync_output() {
-    f="$1"
     if [ "$list_files" -eq 1 ]; then
         output=$(awk '
             function human_readable(bytes) {
@@ -448,10 +442,10 @@ filter_rsync_output() {
                 hsize = human_readable(size)
                 print hsize "  /" name
             }
-        ' "$f") # dry list
+        ' "$1") # dry list
         echo "$output"
     else
-        output=$(grep -vE '(^[[:space:]]*(Number of files:|Number of created files:|Number of deleted files:|Number of regular files transferred:|Total file size:|Total transferred file size:|Literal data:|Matched data:|File list size:|File list generation time:|File list transfer time:|Total bytes sent:|Total bytes received:|sent |speedup|total size is|\[.*\].*))' "$f" || true)
+        output=$(grep -vE '(^[[:space:]]*(Number of files:|Number of created files:|Number of deleted files:|Number of regular files transferred:|Total file size:|Total transferred file size:|Literal data:|Matched data:|File list size:|File list generation time:|File list transfer time:|Total bytes sent:|Total bytes received:|sent |speedup|total size is|\[.*\].*))' "$1" || true)
 
     fi
 }
