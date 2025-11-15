@@ -626,7 +626,6 @@ draw_progress_bar_count() {
 
 set +e
 if [ "$progress_bar" -eq 1 ]; then
-    #log "Starting backup with progress bar..."
     total_files=$(calculate_total_bytes)
 
     if [ "$total_files" -le 0 ]; then
@@ -635,7 +634,9 @@ if [ "$progress_bar" -eq 1 ]; then
     
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
     
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" &
+    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 \
+        2> >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >>"$tmp_err") \
+        | grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >"$tmp_out" &
     rsync_pid=$!
     
     current_files=0
