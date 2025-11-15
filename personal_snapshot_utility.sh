@@ -23,9 +23,9 @@ Options:
             Perform the actual backup (must be provided as the secondary option).
         --dry-run
             Simulate execution without making changes (must be provided as the secondary option).
-        --snapshot_name
+        --snapshot_suffix
             Specify the name of the snapshot. The string is appended to the snapshot folder as suffix. Use carefully.
-            Ex.: personal_snapshot_utility --home --run --snapshot_name="MySnapshot_01"
+            Ex.: personal_snapshot_utility --home --run --snapshot_suffix="MySnapshot_01"
         --list-files
             Show the list of files that would be copied (optional, only with --dry-run).
         --progress-bar
@@ -60,7 +60,7 @@ for arg in "$@"; do
         --dry-run) action="dry-run" ;;
         --help|-h) show_help ;;
         --list-files) list_files=1 ;;
-        --snapshot_name=*) snapshot_name="${arg#*=}"; shift ;;
+        --snapshot_suffix=*) snapshot_suffix="${arg#*=}"; shift ;;
         --progress-file) progress_file=1 ;;
         --progress-bar) progress_bar=1 ;;
         --root) target_type="root" ;;
@@ -110,8 +110,8 @@ if [ "$progress_bar" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
     show_help
 fi
 
-if [ -n "$snapshot_name" ] && [ "$dry_run" -eq 1 ]; then
-    echo -e "\033[1mError: --snapshot_name can only be used with --run.\033[0m" >&2
+if [ -n "$snapshot_suffix" ] && [ "$dry_run" -eq 1 ]; then
+    echo -e "\033[1mError: --snapshot_suffix can only be used with --run.\033[0m" >&2
     show_help
 fi
 
@@ -271,8 +271,8 @@ fi
 if [ "$dry_run" -eq 1 ]; then
     snapshot_dir="$dest_base/.${name_prefix}_$(date "+%d-%m-%Y_%H-%M")"
 else
-    if [ -n "$snapshot_name" ]; then
-        snapshot_dir="$dest_base/${name_prefix}_$(date "+%d-%m-%Y_%H-%M")_${snapshot_name}"
+    if [ -n "$snapshot_suffix" ]; then
+        snapshot_dir="$dest_base/${name_prefix}_$(date "+%d-%m-%Y_%H-%M")_${snapshot_suffix}"
     else
         snapshot_dir="$dest_base/${name_prefix}_$(date "+%d-%m-%Y_%H-%M")"
     fi
@@ -584,15 +584,12 @@ draw_progress_bar() {
 
 set +e
 if [ "$progress_bar" -eq 1 ]; then
-    printf "Calculating total bytes to transfer...\n" | tee -a "$logfile"
+    log "Starting backup with progress bar..."
     total_bytes=$(calculate_total_bytes)
-    total_bytes=$(printf "%d" "$total_bytes" 2>/dev/null || echo "0")
     
     if [ "$total_bytes" -le 0 ]; then
         total_bytes=1
     fi
-    
-    printf "Total bytes to transfer: %s\n" "$(human_size "$total_bytes")" | tee -a "$logfile"
     
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
     
@@ -606,7 +603,6 @@ if [ "$progress_bar" -eq 1 ]; then
         
         if [ -f "$tmp_out" ]; then
             current_bytes=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$tmp_out")
-            current_bytes=$(printf "%d" "$current_bytes" 2>/dev/null || echo "0")
             
             if [ "$current_bytes" -gt "$total_bytes" ]; then
                 current_bytes=$total_bytes
@@ -620,7 +616,6 @@ if [ "$progress_bar" -eq 1 ]; then
     rsync_rc=$?
     
     current_bytes=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$tmp_out")
-    current_bytes=$(printf "%d" "$current_bytes" 2>/dev/null || echo "0")
     if [ "$current_bytes" -gt "$total_bytes" ]; then
         current_bytes=$total_bytes
     fi
