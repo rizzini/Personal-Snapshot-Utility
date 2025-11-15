@@ -544,10 +544,11 @@ calculate_total_bytes() {
     
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
     
-    local total=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$rsync_dry_tmp")
-    
+    # Count number of files (lines where first field is a number)
+    local total_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$rsync_dry_tmp")
+
     rm -f "$rsync_dry_tmp"
-    printf "%s" "$total"
+    printf "%s" "$total_files"
 }
 
 draw_progress_bar() {
@@ -582,13 +583,49 @@ draw_progress_bar() {
         "$(human_size "$total")"
 }
 
+draw_progress_bar_count() {
+    local current=$1
+    local total=$2
+    local width=${3:-40}
+
+    if [ "$total" -le 0 ]; then
+        return
+    fi
+
+    local percent=$(( (current * 100) / total ))
+    local filled=$(( (current * width) / total ))
+    local empty=$(( width - filled ))
+
+    local bar="["
+    local i=0
+    while [ $i -lt $filled ]; do
+        bar="${bar}█"
+        i=$((i + 1))
+    done
+    while [ $i -lt $width ]; do
+        bar="${bar}░"
+        i=$((i + 1))
+    done
+    bar="${bar}]"
+
+    # Format numbers with thousand separator (dot)
+    local current_fmt=$(printf "%'d" "$current" | sed "s/,/./g")
+    local total_fmt=$(printf "%'d" "$total" | sed "s/,/./g")
+
+    printf "\r%-50s %3d%% (%s / %s files)" \
+        "$bar" \
+        "$percent" \
+        "$current_fmt" \
+        "$total_fmt"
+}
+
 set +e
 if [ "$progress_bar" -eq 1 ]; then
     log "Starting backup with progress bar..."
-    total_bytes=$(calculate_total_bytes)
-    
-    if [ "$total_bytes" -le 0 ]; then
-        total_bytes=1
+    total_files=$(calculate_total_bytes)
+
+    if [ "$total_files" -le 0 ]; then
+        total_files=1
     fi
     
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
@@ -596,30 +633,31 @@ if [ "$progress_bar" -eq 1 ]; then
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" &
     rsync_pid=$!
     
-    current_bytes=0
+    current_files=0
     
     while kill -0 "$rsync_pid" 2>/dev/null; do
         sleep 0.5
         
         if [ -f "$tmp_out" ]; then
-            current_bytes=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$tmp_out")
-            
-            if [ "$current_bytes" -gt "$total_bytes" ]; then
-                current_bytes=$total_bytes
+            # count files seen so far (lines starting with size)
+            current_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$tmp_out")
+
+            if [ "$current_files" -gt "$total_files" ]; then
+                current_files=$total_files
             fi
-            
-            draw_progress_bar "$current_bytes" "$total_bytes"
+
+            draw_progress_bar_count "$current_files" "$total_files"
         fi
     done
     
     wait "$rsync_pid"
     rsync_rc=$?
     
-    current_bytes=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$tmp_out")
-    if [ "$current_bytes" -gt "$total_bytes" ]; then
-        current_bytes=$total_bytes
+    current_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$tmp_out")
+    if [ "$current_files" -gt "$total_files" ]; then
+        current_files=$total_files
     fi
-    draw_progress_bar "$current_bytes" "$total_bytes"
+    draw_progress_bar_count "$current_files" "$total_files"
     printf "\n"
     
     if [ -f "$tmp_err" ]; then
