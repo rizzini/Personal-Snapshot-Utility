@@ -544,7 +544,6 @@ calculate_total_bytes() {
     
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
     
-    # Count number of files (lines where first field is a number)
     local total_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$rsync_dry_tmp")
 
     rm -f "$rsync_dry_tmp"
@@ -608,9 +607,15 @@ draw_progress_bar_count() {
     done
     bar="${bar}]"
 
-    # Format numbers with thousand separator (dot)
-    local current_fmt=$(printf "%'d" "$current" | sed "s/,/./g")
-    local total_fmt=$(printf "%'d" "$total" | sed "s/,/./g")
+    if [ "${LANG%%.*}" = "pt_BR" ]; then
+        local current_fmt=$(printf "%'d" "$current" | sed "s/,/./g")
+        local total_fmt=$(printf "%'d" "$total" | sed "s/,/./g")
+
+    else    
+        local current_fmt=$(printf "%'d" "$current")
+        local total_fmt=$(printf "%'d" "$total")
+    fi
+   
 
     printf "\r%-50s %3d%% (%s / %s files)" \
         "$bar" \
@@ -621,7 +626,7 @@ draw_progress_bar_count() {
 
 set +e
 if [ "$progress_bar" -eq 1 ]; then
-    log "Starting backup with progress bar..."
+    #log "Starting backup with progress bar..."
     total_files=$(calculate_total_bytes)
 
     if [ "$total_files" -le 0 ]; then
@@ -639,7 +644,7 @@ if [ "$progress_bar" -eq 1 ]; then
         sleep 0.5
         
         if [ -f "$tmp_out" ]; then
-            # count files seen so far (lines starting with size)
+            
             current_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$tmp_out")
 
             if [ "$current_files" -gt "$total_files" ]; then
