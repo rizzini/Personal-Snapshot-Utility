@@ -6,7 +6,7 @@ logfile=""
 
 show_help() {
     cat <<EOF
-Usage: $0 --root|--home --run|--dry-run [--list-files] [--progress]
+Usage: $0 --root|--home --run|--dry-run [--list-files] [--progress-bar|--progress-file]
 
 Incremental backup using rsync + hard links. There are two primary targets:
     --root    : backs up '/' and saves snapshots in $dest_root/
@@ -28,8 +28,10 @@ Options:
             Ex.: personal_snapshot_utility --home --run --snapshot_name="MySnapshot_01"
         --list-files
             Show the list of files that would be copied (optional, only with --dry-run).
-        --progress
-            Show an overall progress display (based on total size, only with --run).
+        --progress-bar
+            Show an overall progress display (only with --run).
+        --progress-file
+            Show each file as it is copied (only with --run).
 
 Notes:
         - Snapshots are created in ${dest_root}/root_DD-MM-YYYY_HH-MM/ or
@@ -45,7 +47,8 @@ dry_run=1
 list_files=0
 target_type=""
 action=""
-progress=0
+progress_file=0
+progress_bar=0
 
 if [ "$#" -eq 0 ]; then
     show_help
@@ -58,7 +61,8 @@ for arg in "$@"; do
         --help|-h) show_help ;;
         --list-files) list_files=1 ;;
         --snapshot_name=*) snapshot_name="${arg#*=}"; shift ;;
-        --progress) progress=1 ;;
+        --progress-file) progress_file=1 ;;
+        --progress-bar) progress_bar=1 ;;
         --root) target_type="root" ;;
         --home) target_type="home" ;;
         *)
@@ -96,8 +100,13 @@ if [ "$list_files" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
     show_help
 fi
 
-if [ "$progress" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
-    echo -e "\033[1mError: --progress can only be used with --run.\033[0m" >&2
+if [ "$progress_file" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
+    echo -e "\033[1mError: --progress-file can only be used with --run.\033[0m" >&2
+    show_help
+fi
+
+if [ "$progress_bar" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
+    echo -e "\033[1mError: --progress-bar can only be used with --run.\033[0m" >&2
     show_help
 fi
 
@@ -530,8 +539,100 @@ fi
 
 tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
 
+calculate_total_bytes() {
+    local rsync_dry_tmp=$(mktemp /tmp/backup_root.rsync.dry.XXXXXX)
+    
+    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
+    
+    local total=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$rsync_dry_tmp")
+    
+    rm -f "$rsync_dry_tmp"
+    printf "%s" "$total"
+}
+
+draw_progress_bar() {
+    local current=$1
+    local total=$2
+    local width=${3:-40}
+    
+    if [ "$total" -le 0 ]; then
+        return
+    fi
+    
+    local percent=$(( (current * 100) / total ))
+    local filled=$(( (current * width) / total ))
+    local empty=$(( width - filled ))
+    
+    local bar="["
+    local i=0
+    while [ $i -lt $filled ]; do
+        bar="${bar}█"
+        i=$((i + 1))
+    done
+    while [ $i -lt $width ]; do
+        bar="${bar}░"
+        i=$((i + 1))
+    done
+    bar="${bar}]"
+    
+    printf "\r%-50s %3d%% (%s / %s)" \
+        "$bar" \
+        "$percent" \
+        "$(human_size "$current")" \
+        "$(human_size "$total")"
+}
+
 set +e
-if [ "$progress" -eq 1 ]; then
+if [ "$progress_bar" -eq 1 ]; then
+    printf "Calculating total bytes to transfer...\n" | tee -a "$logfile"
+    total_bytes=$(calculate_total_bytes)
+    total_bytes=$(printf "%d" "$total_bytes" 2>/dev/null || echo "0")
+    
+    if [ "$total_bytes" -le 0 ]; then
+        total_bytes=1
+    fi
+    
+    printf "Total bytes to transfer: %s\n" "$(human_size "$total_bytes")" | tee -a "$logfile"
+    
+    tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
+    
+    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" &
+    rsync_pid=$!
+    
+    current_bytes=0
+    
+    while kill -0 "$rsync_pid" 2>/dev/null; do
+        sleep 0.5
+        
+        if [ -f "$tmp_out" ]; then
+            current_bytes=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$tmp_out")
+            current_bytes=$(printf "%d" "$current_bytes" 2>/dev/null || echo "0")
+            
+            if [ "$current_bytes" -gt "$total_bytes" ]; then
+                current_bytes=$total_bytes
+            fi
+            
+            draw_progress_bar "$current_bytes" "$total_bytes"
+        fi
+    done
+    
+    wait "$rsync_pid"
+    rsync_rc=$?
+    
+    current_bytes=$(awk '($1 ~ /^[0-9]+$/) { sum += $1 } END { if (sum > 0) printf "%.0f", sum; else print 0 }' "$tmp_out")
+    current_bytes=$(printf "%d" "$current_bytes" 2>/dev/null || echo "0")
+    if [ "$current_bytes" -gt "$total_bytes" ]; then
+        current_bytes=$total_bytes
+    fi
+    draw_progress_bar "$current_bytes" "$total_bytes"
+    printf "\n"
+    
+    if [ -f "$tmp_err" ]; then
+        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' "$tmp_err" >> "$tmp_out" 2>/dev/null || true
+    fi
+    
+    rm -f "$tmp_err" || true
+elif [ "$progress_file" -eq 1 ]; then
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
 
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" & # real progress
