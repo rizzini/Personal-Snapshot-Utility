@@ -350,8 +350,29 @@ human_size() {
     fi
 }
 
+count_transferred_lines() {
+    local f="$1"
+    if [ ! -f "$f" ]; then
+        echo 0
+        return
+    fi
+
+    local n1
+    n1=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count>0) print count; else print 0 }' "$f")
+
+    local n2
+    n2=$(grep -c '^file has vanished:' "$f" || true)
+
+    local n3=0
+    if grep -qF 'File list generation time:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
+    if grep -qF 'File list size:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
+    if grep -qF 'File list transfer time:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
+
+    echo $((n1 + n2 + n3))
+}
+
 summarize_rsync_output() {
-    transferred_count=$(wc -l < "$1")
+    transferred_count=$(count_transferred_lines "$1")
 
     total_bytes=$(awk '{sum += $1} END{ if (sum>0) printf "%.0f", sum; else print 0 }' "$1")
     
@@ -539,7 +560,7 @@ fi
 
 tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
 
-calculate_total_bytes() {
+calculate_total_files() {
     local rsync_dry_tmp=$(mktemp /tmp/backup_root.rsync.dry.XXXXXX)
     
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
@@ -626,7 +647,7 @@ draw_progress_bar_count() {
 
 set +e
 if [ "$progress_bar" -eq 1 ]; then
-    total_files=$(calculate_total_bytes)
+    total_files=$(calculate_total_files)
 
     if [ "$total_files" -le 0 ]; then
         total_files=1
@@ -646,7 +667,7 @@ if [ "$progress_bar" -eq 1 ]; then
         
         if [ -f "$tmp_out" ]; then
             
-            current_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$tmp_out")
+            current_files=$(count_transferred_lines "$tmp_out")
 
             if [ "$current_files" -gt "$total_files" ]; then
                 current_files=$total_files
@@ -659,7 +680,7 @@ if [ "$progress_bar" -eq 1 ]; then
     wait "$rsync_pid"
     rsync_rc=$?
     
-    current_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$tmp_out")
+    current_files=$(count_transferred_lines "$tmp_out")
     if [ "$current_files" -gt "$total_files" ]; then
         current_files=$total_files
     fi
