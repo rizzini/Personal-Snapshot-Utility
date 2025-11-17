@@ -430,7 +430,7 @@ summarize_rsync_output() {
         printf '%s' "$plain_summary" >>"$logfile" || true
     else
         if [ -t 1 ]; then
-            printf '\n'
+            #printf '\n'
             printf -- '----- rsync summary -----\n'
             printf 'Files to transfer: \033[1m%s\033[0m\n' "$transferred_count"
             if [ "$has_bytes" -eq 1 ]; then
@@ -451,33 +451,33 @@ summarize_rsync_output() {
 }
 
 filter_rsync_output() {
-    if [ "$list_files" -eq 1 ]; then
-        output=$(awk '
-            function human_readable(bytes) {
-                if (bytes == 0) return "0 B"
-                units = "B KB MB GB TB PB"
-                scale = 1024
-                i = 1
-                while (bytes >= scale && i < 7) {
-                    bytes = bytes / scale
-                    i++
-                }
-                split(units, u, " ")
-                return sprintf("%.2f %s", bytes, u[i])
+    awk '
+        function human_readable(bytes) {
+            if (bytes == 0) return "0 B"
+            units = "B KB MB GB TB PB"
+            scale = 1024
+            i = 1
+            while (bytes >= scale && i < 7) {
+                bytes = bytes / scale
+                i++
             }
-            ($1 ~ /^[0-9]+$/) {
-                size=$1
-                name=""
-                for (i=2;i<=NF;i++) name = name (i>2?" ":"") $i
-                hsize = human_readable(size)
-                print hsize "  /" name
-            }
-        ' "$1") # dry list
-        echo "$output"
-    else
-        output=$(grep -vE '(^[[:space:]]*(Number of files:|Number of created files:|Number of deleted files:|Number of regular files transferred:|Total file size:|Total transferred file size:|Literal data:|Matched data:|File list size:|File list generation time:|File list transfer time:|Total bytes sent:|Total bytes received:|sent |speedup|total size is|\[.*\].*))' "$1" || true)
+            split(units, u, " ")
+            return sprintf("%.2f %s", bytes, u[i])
+        }
 
-    fi
+        /^[[:space:]]*(Number of files:|Number of created files:|Number of deleted files:|Number of regular files transferred:|Total file size:|Total transferred file size:|Literal data:|Matched data:|File list size:|File list generation time:|File list transfer time:|Total bytes sent:|Total bytes received:|sent [0-9,.]+ bytes|total size is|speedup is|rsync error:|rsync: error:)/ { next }
+
+        ($1 ~ /^[0-9]+$/) {
+            size=$1
+            name=""
+            for (i=2;i<=NF;i++) name = name (i>2?" ":"") $i
+            hsize = human_readable(size)
+            printf "%-9s | /%s\n", hsize, name
+            next
+        }
+
+        { print }
+    ' "$1"
 }
 
 if [ "$dry_run" -eq 1 ]; then
