@@ -492,14 +492,6 @@ if [ "$dry_run" -eq 1 ]; then
 
         TEMP_FILES=( "$tmp_out" "$tmp_new" )
 
-        cleanup_temps() {
-            last_signal=INT
-            rm -f "${TEMP_FILES[@]}"
-            trap - INT
-            kill -INT $$
-        }
-        trap cleanup_temps_trap INT
-    
         awk -v is_tty="$([ -t 1 ] && echo 1 || echo 0)" '
             BEGIN {
                 red="\033[91m"
@@ -571,38 +563,6 @@ calculate_total_files() {
     printf "%s" "$total_files"
 }
 
-draw_progress_bar() {
-    local current=$1
-    local total=$2
-    local width=${3:-40}
-    
-    if [ "$total" -le 0 ]; then
-        return
-    fi
-    
-    local percent=$(( (current * 100) / total ))
-    local filled=$(( (current * width) / total ))
-    local empty=$(( width - filled ))
-    
-    local bar="["
-    local i=0
-    while [ $i -lt $filled ]; do
-        bar="${bar}█"
-        i=$((i + 1))
-    done
-    while [ $i -lt $width ]; do
-        bar="${bar}░"
-        i=$((i + 1))
-    done
-    bar="${bar}]"
-    
-    printf "\r%-50s %3d%% (%s / %s)" \
-        "$bar" \
-        "$percent" \
-        "$(human_size "$current")" \
-        "$(human_size "$total")"
-}
-
 draw_progress_bar_count() {
     local current=$1
     local total=$2
@@ -636,13 +596,8 @@ draw_progress_bar_count() {
         local current_fmt=$(printf "%'d" "$current")
         local total_fmt=$(printf "%'d" "$total")
     fi
-   
 
-    printf "\r%-50s %3d%% (%s / %s files)" \
-        "$bar" \
-        "$percent" \
-        "$current_fmt" \
-        "$total_fmt"
+    printf "\r%-50s %3d%% (%s / %s files)" "$bar" "$percent" "$current_fmt" "$total_fmt"
 }
 
 set +e
@@ -817,4 +772,3 @@ if [[  "$dest_base" != *"home"* ]]; then
     mkdir -p mnt tmp sys run proc dev home boot/efi || true
 fi
 log "Backup finished and link updated: $dest_base/last -> $snapshot_dir"
-exit 0
