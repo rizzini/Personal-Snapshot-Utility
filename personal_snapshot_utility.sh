@@ -125,6 +125,7 @@ fi
 cleanup_trap() {
     rc=$?
     flock -u 200 || true
+    rm -f "$lockfile"
 
     rm -f "$tmp_out" "$tmp_err"
 
@@ -155,15 +156,8 @@ cleanup_trap() {
                             if [ "${answer}" = "s" ] || [ "${answer}" = "S" ] || [ "${answer}" = "y" ] || [ "${answer}" = "Y" ]; then
                                 echo "Removing incomplete snapshot: ${snapshot_dir}" | tee -a "${logfile}"
                                 rm -rf -- "${snapshot_dir}" || true
-                            else
-                                echo " Incomplete snapshot kept: ${snapshot_dir}" | tee -a "${logfile}"
                             fi
-                        else
-                            echo "Non-interactive terminal - keeping snapshot: ${snapshot_dir}" | tee -a "${logfile}"
                         fi
-                        ;;
-                    *)
-                        echo "WARNING: Snapshot ${snapshot_dir} is outside base directory ${dest_base}, will not be removed" | tee -a "${logfile}"
                         ;;
                 esac
             fi
@@ -430,7 +424,6 @@ summarize_rsync_output() {
         printf '%s' "$plain_summary" >>"$logfile" || true
     else
         if [ -t 1 ]; then
-            #printf '\n'
             printf -- '----- rsync summary -----\n'
             printf 'Files to transfer: \033[1m%s\033[0m\n' "$transferred_count"
             if [ "$has_bytes" -eq 1 ]; then
