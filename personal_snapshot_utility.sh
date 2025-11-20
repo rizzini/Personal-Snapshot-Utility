@@ -141,7 +141,6 @@ cleanup_trap() {
             printf "\n----------------------------------------"
         fi
     else
-        ok_msg="Backup completed successfully"
         fail_msg="Backup failed with exit code ${rc}"
     fi
 
@@ -613,9 +612,7 @@ if [ "$progress_bar" -eq 1 ]; then
     
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
     
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 \
-        2> >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >>"$tmp_err") \
-        | grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >"$tmp_out" &
+    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 2> >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >>"$tmp_err") | grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >"$tmp_out" & # real progress bar
     rsync_pid=$!
     
     current_files=0
@@ -653,7 +650,7 @@ if [ "$progress_bar" -eq 1 ]; then
 elif [ "$progress_file" -eq 1 ]; then
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
 
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" & # real progress
+    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" & # real progress file
     rsync_pid=$!
     
     tail -n +1 -F "$tmp_out" 2>/dev/null | awk '
@@ -762,16 +759,15 @@ if [ "${real_run:-0}" -eq 1 ] && [ -n "$logfile" ]; then
 fi
 rm -f "$tmp_out"
 
-if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ]; then
+if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -eq 24 ]; then # err 24 = some files vanished -> not fatal
     tmp_link="$dest_base/last_tmp"
     ln -s "$snapshot_dir" "$tmp_link"
-    mv -T "$tmp_link" "$dest_base/last"
-    log "Link updated: $dest_base/last -> $snapshot_dir"
+    mv -T "$tmp_link" "$dest_base/last"    
+    if [[  "$dest_base" != *"home"* ]]; then
+        cd "$dest_base/last"
+        mkdir -p mnt tmp sys run proc dev home boot/efi || true
+    fi  
+    log "Backup finished and Link updated: $dest_base/last -> $snapshot_dir"  
 else
     log_err "Rsync failed (code ${rsync_rc:-}) - the link '$dest_base/last' was NOT updated."
 fi
-if [[  "$dest_base" != *"home"* ]]; then
-    cd "$dest_base/last"
-    mkdir -p mnt tmp sys run proc dev home boot/efi || true
-fi
-log "Backup finished and link updated: $dest_base/last -> $snapshot_dir"
