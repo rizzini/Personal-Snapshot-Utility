@@ -5,40 +5,45 @@ lockfile="/tmp/backup_root.lock"
 logfile=""
 
 show_help() {
+    local BOLD=$'\033[1m'
+    local RESET=$'\033[0m'
     cat <<EOF
-Usage: $0 --root|--home --run|--dry-run [--list-files] [--progress-bar|--progress-file]
+Uso: personal_snapshot_utility --root|--home --run|--dry-run [--list-files] [--progress-bar|--progress-file] [--snapshot_suffix=NAME]
 
-Incremental backup using rsync + hard links. There are two primary targets:
-    --root    : backs up '/' and saves snapshots in $dest_root/
-    --home    : backs up '/home' and saves snapshots in $dest_home/
+Backup incremental com rsync + hard links. Dois alvos principais:
+    --root : faz backup de '/' e salva snapshots em $dest_root/
+    --home : faz backup de '/home' e salva snapshots em $dest_home/
 
-Options:
-        -h, --help
-            Show this help and exit.
-        --root
-            Select backup of the system root (/).
-        --home
-            Select backup of the /home directory.
-        --run
-            Perform the actual backup (must be provided as the secondary option).
-        --dry-run
-            Simulate execution without making changes (must be provided as the secondary option).
-        --snapshot_suffix
-            Specify the name of the snapshot. The string is appended to the snapshot folder as suffix. Use carefully.
-            Ex.: personal_snapshot_utility --home --run --snapshot_suffix="MySnapshot_01"
-        --list-files
-            Show the list of files that would be copied (optional, only with --dry-run).
-        --progress-bar
-            Show an overall progress display (only with --run).
-        --progress-file
-            Show each file as it is copied (only with --run).
-
-Notes:
-        - Snapshots are created in ${dest_root}/root_DD-MM-YYYY_HH-MM/ or
-            ${dest_home}/home_DD-MM-YYYY_HH-MM/ depending on the target.
-        - A symbolic link 'last' inside each destination points to the latest snapshot.
-        - Logs are saved inside the snapshot folder when --run is used.
-        - The --progress option displays each file as: /source -> /destination
+Opções:
+    -h, --help
+        Mostrar esta ajuda e sair.
+    --root
+        Seleciona backup do sistema root (/).
+    --home
+        Seleciona backup do diretório /home.
+    --run
+        Executa o backup de verdade (requer privilégios de root).
+    --dry-run
+        Simula a execução sem fazer alterações.
+    --snapshot_suffix=NAME
+        Acrescenta um sufixo ao nome do snapshot (use com cuidado).
+        Ex.: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MinhaCopia_01"${RESET}
+    --list-files
+        Lista os arquivos que seriam copiados (só com --dry-run).
+        Ex.: ${BOLD}personal_snapshot_utility --home --dry-run --list-files${RESET}
+    --progress-bar
+        Mostra barra de progresso agregada (só com --run).
+        Ex.: ${BOLD}sudo personal_snapshot_utility --home --run --progress-bar${RESET}
+    --progress-file
+        Mostra cada arquivo conforme é copiado (só com --run).
+        Ex.: ${BOLD}sudo personal_snapshot_utility --home --run --progress-file${RESET}
+Notas importantes:
+    - Snapshots serão criados em ${dest_root}/root_DD-MM-YYYY_HH-MM/ ou
+      ${dest_home}/home_DD-MM-YYYY_HH-MM/ dependendo do alvo.
+    - O link simbólico 'last' dentrodo destino aponta para o snapshot mais recente.
+    - Os logs são gravados dentro do snapshot quando --run é usado.
+    - --list-files só faz sentido com --dry-run; as opções --progress-* só com --run.
+    - Para executar --run use sudo/root; sem isso o script sairá com erro.
 EOF
     exit 0
 }
@@ -221,10 +226,11 @@ excludes_root=(
     /lost+found
     /home
     /boot/efi
+    "/backup_*.log" # don't retain old logs
 )
 
 excludes_home=(
-    
+    "/home/backup_*.log" # don't retain old logs
 )
 
 if [ ! -d "$dest_base" ]; then
