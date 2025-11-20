@@ -226,11 +226,13 @@ excludes_root=(
     /lost+found
     /home
     /boot/efi
-    "/backup_*.log" # don't retain old logs
 )
 
 excludes_home=(
-    "/home/backup_*.log" # don't retain old logs
+)
+
+exclude_logs=(
+    "backup_*.log"
 )
 
 if [ ! -d "$dest_base" ]; then
@@ -335,6 +337,8 @@ if [ "${target_type}" = "root" ]; then
 else
     excludes=( "${excludes_home[@]}" )
 fi
+
+excludes+=( "${exclude_logs[@]}" )
 
 for e in "${excludes[@]}"; do
     rsync_opts+=( --exclude="$e" )
