@@ -8,42 +8,42 @@ show_help() {
     local BOLD=$'\033[1m'
     local RESET=$'\033[0m'
     cat <<EOF
-Uso: personal_snapshot_utility --root|--home --run|--dry-run [--list-files] [--progress-bar|--progress-file] [--snapshot_suffix=NAME]
+Usage: personal_snapshot_utility --root|--home --run|--dry-run [--list-files] [--progress-bar|--progress-file] [--snapshot_suffix=NAME]
 
-Backup incremental com rsync + hard links. Dois alvos principais:
-    --root : faz backup de '/' e salva snapshots em $dest_root/
-    --home : faz backup de '/home' e salva snapshots em $dest_home/
+Incremental backup with rsync + hard links. Two main targets:
+    --root : backup of '/' and saves snapshots in $dest_root/
+    --home : backup of '/home' and saves snapshots in $dest_home/
 
-Opções:
+Options:
     -h, --help
-        Mostrar esta ajuda e sair.
+        Show this help and exit.
     --root
-        Seleciona backup do sistema root (/).
+        Select backup of root system (/).
     --home
-        Seleciona backup do diretório /home.
+        Select backup of /home directory.
     --run
-        Executa o backup de verdade (requer privilégios de root).
+        Actually perform the backup (requires root privileges).
     --dry-run
-        Simula a execução sem fazer alterações.
+        Simulate execution without making changes.
     --snapshot_suffix=NAME
-        Acrescenta um sufixo ao nome do snapshot (use com cuidado).
-        Ex.: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MinhaCopia_01"${RESET}
+        Adds a suffix to the snapshot name (use with care).
+        Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
     --list-files
-        Lista os arquivos que seriam copiados (só com --dry-run).
-        Ex.: ${BOLD}personal_snapshot_utility --home --dry-run --list-files${RESET}
+        List files that would be copied (only with --dry-run).
+        Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files${RESET}
     --progress-bar
-        Mostra barra de progresso agregada (só com --run).
-        Ex.: ${BOLD}sudo personal_snapshot_utility --home --run --progress-bar${RESET}
+        Show aggregate progress bar (only with --run).
+        Example: ${BOLD}sudo personal_snapshot_utility --home --run --progress-bar${RESET}
     --progress-file
-        Mostra cada arquivo conforme é copiado (só com --run).
-        Ex.: ${BOLD}sudo personal_snapshot_utility --home --run --progress-file${RESET}
-Notas importantes:
-    - Snapshots serão criados em ${dest_root}/root_DD-MM-YYYY_HH-MM/ ou
-      ${dest_home}/home_DD-MM-YYYY_HH-MM/ dependendo do alvo.
-    - O link simbólico 'last' dentrodo destino aponta para o snapshot mais recente.
-    - Os logs são gravados dentro do snapshot quando --run é usado.
-    - --list-files só faz sentido com --dry-run; as opções --progress-* só com --run.
-    - Para executar --run use sudo/root; sem isso o script sairá com erro.
+        Show each file as it is copied (only with --run).
+        Example: ${BOLD}sudo personal_snapshot_utility --home --run --progress-file${RESET}
+Important notes:
+    - Snapshots will be created in ${dest_root}/root_DD-MM-YYYY_HH-MM/ or
+      ${dest_home}/home_DD-MM-YYYY_HH-MM/ depending on the target.
+    - The symbolic link 'last' inside the destination points to the most recent snapshot.
+    - Logs are saved inside the snapshot when --run is used.
+    - --list-files only makes sense with --dry-run; --progress-* options only with --run.
+    - To use --run you must use sudo/root; otherwise the script will exit with error.
 EOF
     exit 0
 }
