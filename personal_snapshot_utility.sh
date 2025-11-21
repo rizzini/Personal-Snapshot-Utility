@@ -36,14 +36,7 @@ Options:
         Example: ${BOLD}sudo personal_snapshot_utility --home --run --progress-bar${RESET}
     --progress-file
         Show each file as it is copied (only with --run).
-        Example: ${BOLD}sudo personal_snapshot_utility --home --run --progress-file${RESET}
-Important notes:
-    - Snapshots will be created in ${dest_root}/root_DD-MM-YYYY_HH-MM/ or
-      ${dest_home}/home_DD-MM-YYYY_HH-MM/ depending on the target.
-    - The symbolic link 'last' inside the destination points to the most recent snapshot.
-    - Logs are saved inside the snapshot when --run is used.
-    - --list-files only makes sense with --dry-run; --progress-* options only with --run.
-    - To use --run you must use sudo/root; otherwise the script will exit with error.
+        Example: ${BOLD}personal_snapshot_utility --home --run --progress-file${RESET}
 EOF
     exit 0
 }
@@ -225,6 +218,9 @@ excludes_root=(
     /lost+found
     /home
     /boot/efi
+    /var/lib/flatpak/repo/objects/*
+    /var/cache/*
+    /var/tmp/*
 )
 
 excludes_home=(
