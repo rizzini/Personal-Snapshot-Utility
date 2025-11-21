@@ -161,8 +161,6 @@ cleanup_trap() {
         else
             if [ "${rc}" -ne 0 ]; then
                 echo " ${fail_msg}" | tee -a "${logfile}"
-            else
-                echo " ${ok_msg}" | tee -a "${logfile}"
             fi
         fi
     else
@@ -342,11 +340,17 @@ done
 rsync_opts+=( "$source" "$snapshot_dir" )
 
 human_size() {
-    if command -v numfmt >/dev/null 2>&1; then
-        numfmt --to=iec --suffix=B --format="%.2f" "$1" 2>/dev/null || printf "%s B" "$1"
-    else
-        echo 'numfmt missing..'
-    fi
+    local bytes=${1:-0}
+    bytes=${bytes//,/}
+    [[ $bytes == *[^0-9]* ]] && bytes=0
+
+    awk -v size="$bytes" '
+    BEGIN {
+        split("B KiB MiB GiB TiB PiB EiB", unit)
+        for (i=1; size>=1024 && i<7; i++) size /= 1024
+        if (size == int(size)) printf "%d %s", size, unit[i]
+        else printf "%.2f %s", size, unit[i]
+    }'
 }
 
 count_transferred_lines() {
@@ -556,7 +560,7 @@ calculate_total_files() {
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
     
     local total_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$rsync_dry_tmp")
-
+    
     rm -f "$rsync_dry_tmp"
     printf "%s" "$total_files"
 }
