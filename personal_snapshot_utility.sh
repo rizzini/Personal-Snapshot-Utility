@@ -368,7 +368,13 @@ count_transferred_lines() {
     if grep -qF 'File list size:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
     if grep -qF 'File list transfer time:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
 
-    echo $((n1 + n2 + n3))
+    result=$((n1 + n2 + n3))
+
+    if [ "${LANG%%.*}" = "pt_BR" ]; then
+        printf "%'d" "$result" | sed "s/,/./g"
+    else    
+        printf "%'d" "$result"
+    fi
 }
 
 summarize_rsync_output() {
