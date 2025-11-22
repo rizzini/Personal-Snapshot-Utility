@@ -453,7 +453,7 @@ filter_rsync_output() {
     awk '
         function human_readable(bytes) {
             if (bytes == 0) return "0 B"
-            units = "B KB MB GB TB PB"
+            units = "B KiB MiB GiB TiB PiB EiB"
             scale = 1024
             i = 1
             while (bytes >= scale && i < 7) {
@@ -461,7 +461,10 @@ filter_rsync_output() {
                 i++
             }
             split(units, u, " ")
-            return sprintf("%.2f %s", bytes, u[i])
+            if (bytes == int(bytes))
+                return sprintf("%d %s", bytes, u[i])
+            else
+                return sprintf("%.2f %s", bytes, u[i])
         }
 
         /^[[:space:]]*(Number of files:|Number of created files:|Number of deleted files:|Number of regular files transferred:|Total file size:|Total transferred file size:|Literal data:|Matched data:|File list size:|File list generation time:|File list transfer time:|Total bytes sent:|Total bytes received:|sent [0-9,.]+ bytes|total size is|speedup is|rsync error:|rsync: error:)/ { next }
