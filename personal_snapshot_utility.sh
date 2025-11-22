@@ -29,7 +29,7 @@ Options:
         Adds a suffix to the snapshot name (use with care).
         Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
     --list-files
-        List files that would be copied (only with --dry-run).
+        List files that would be copied (only with --dry-run). Useful to grep for specific files or directories.
         Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files${RESET}
     --progress-bar
         Show aggregate progress bar (only with --run).
@@ -216,9 +216,6 @@ excludes_root=(
     /lost+found
     /home
     /boot/efi
-    /var/lib/flatpak/repo/objects/*
-    /var/cache/*
-    /var/tmp/*
 )
 
 excludes_home=(
@@ -763,7 +760,7 @@ if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}
     tmp_link="$dest_base/last_tmp"
     ln -s "$snapshot_dir" "$tmp_link"
     mv -T "$tmp_link" "$dest_base/last"    
-    if [[  "$dest_base" != *"home"* ]]; then
+    if [[  "$dest_base" == *"root"* ]]; then
         cd "$dest_base/last"
         mkdir -p mnt tmp sys run proc dev home boot/efi || true
     fi  
