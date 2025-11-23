@@ -273,7 +273,7 @@ mkdir -p "$snapshot_dir"
 
 if [ "$dry_run" -eq 0 ]; then
     logfile="$snapshot_dir/backup_$(date "+%d-%m-%Y_%H-%M").log"
-    : >"$logfile" 
+    : >"$logfile" # create logfile
     real_run=1
 else
     real_run=0
@@ -551,7 +551,9 @@ if [ "$dry_run" -eq 1 ]; then
         mv "$tmp_new" "$tmp_out"
         trap 'last_signal=INT; exit' INT
     fi
-    filter_rsync_output "$tmp_out"
+    if [ "$list_files" -eq 1 ]; then
+        filter_rsync_output "$tmp_out"
+    fi
     summarize_rsync_output "$tmp_out"
     rm -f "$tmp_out"
     rm -rf "$snapshot_dir"
