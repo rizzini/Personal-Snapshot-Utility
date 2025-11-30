@@ -121,7 +121,9 @@ if ! flock -n 200; then
 fi
 
 cleanup_trap() {
-    loading stop
+    if [ "$progress_bar" -eq 1 ]; then
+        loading stop 
+    fi
     rc=$?
     flock -u 200 || true
     rm -f "$lockfile"
@@ -548,16 +550,11 @@ fi
 
 tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
 
-
-
-
 calculate_total_files() {
     local rsync_dry_tmp=$(mktemp /tmp/backup_root.rsync.dry.XXXXXX)
 
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
-
-    
-    
+   
     local total_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$rsync_dry_tmp")
     
     rm -f "$rsync_dry_tmp"
@@ -618,11 +615,11 @@ loading() {
 
             {
                 while true; do
-                    printf "\r%s .  "  "$loading__message"
+                    printf "\r%s.  "  "$loading__message"
                     sleep 0.4
-                    printf "\r%s .. "  "$loading__message"
+                    printf "\r%s.. "  "$loading__message"
                     sleep 0.4
-                    printf "\r%s ..." "$loading__message"
+                    printf "\r%s..." "$loading__message"
                     sleep 0.4
                 done
             } &
