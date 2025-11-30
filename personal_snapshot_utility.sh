@@ -121,6 +121,7 @@ if ! flock -n 200; then
 fi
 
 cleanup_trap() {
+    loading stop
     rc=$?
     flock -u 200 || true
     rm -f "$lockfile"
@@ -273,7 +274,7 @@ mkdir -p "$snapshot_dir"
 
 if [ "$dry_run" -eq 0 ]; then
     logfile="$snapshot_dir/backup_$(date "+%d-%m-%Y_%H-%M").log"
-    : >"$logfile" # create logfile
+    : >"$logfile"
     real_run=1
 else
     real_run=0
@@ -381,7 +382,6 @@ summarize_rsync_output() {
 
     total_bytes=$(awk '{sum += $1} END{ if (sum>0) printf "%.0f", sum; else print 0 }' "$1")
     
-    has_bytes=$(awk -v n="$total_bytes" 'BEGIN{print (n > 0) ? 1 : 0}')
     rsync_total_bytes="$total_bytes"
     min_required=$(( total_bytes + total_bytes / 10 ))
 
@@ -392,23 +392,14 @@ summarize_rsync_output() {
         {
             echo -e "\n----- rsync summary -----"
             echo "Files to transfer: $transferred_count"
-            if [ "$has_bytes" -eq 1 ]; then
-                echo "Total size to transfer: $(human_size "$total_bytes")"
-            else
-                echo "Total size to transfer: 0 bytes"
-            fi
+            echo "Total size to transfer: $(human_size "$total_bytes")"
             echo "Espaço disponível no destino: $avail_human"
             echo "---------------------------"
             echo
         } >> "$logfile"
     else
         plain_summary=$(printf "\n----- rsync summary -----\nFiles to transfer: %s\n" "$transferred_count")
-        if [ "$has_bytes" -eq 1 ]; then
-            plain_summary+=$(printf "Total size to transfer: %s\n" "$(human_size "$total_bytes")")
-        else
-            plain_summary+=$(printf "Total size to transfer: 0 bytes\n")
-        fi
-        
+        plain_summary+=$(printf "Total size to transfer: %s\n" "$(human_size "$total_bytes")")
         avail_bytes=$(df --output=avail -B1 "$dest_base" | tail -n1)
         avail_human=$(human_size "$avail_bytes")
 
@@ -437,11 +428,7 @@ summarize_rsync_output() {
         if [ -t 1 ]; then
             printf -- '----- rsync summary -----\n'
             printf 'Files to transfer: \033[1m%s\033[0m\n' "$transferred_count"
-            if [ "$has_bytes" -eq 1 ]; then
-                printf 'Total size to transfer: \033[1m%s\033[0m\n' "$(human_size "$total_bytes")"
-            else
-                printf 'Total size to transfer: \033[1m0 bytes\033[0m\n'
-            fi
+            printf 'Total size to transfer: \033[1m%s\033[0m\n' "$(human_size "$total_bytes")"
             if [ "$need_red" -eq 1 ] && [ -t 1 ]; then
                 printf 'Available space on destination: \033[1;91m%s\033[0m\n' "$avail_human"
             else
@@ -561,10 +548,15 @@ fi
 
 tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
 
+
+
+
 calculate_total_files() {
     local rsync_dry_tmp=$(mktemp /tmp/backup_root.rsync.dry.XXXXXX)
-    
+
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
+
+    
     
     local total_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$rsync_dry_tmp")
     
@@ -609,16 +601,59 @@ draw_progress_bar_count() {
     printf "\r%-50s %3d%% (%s / %s files)" "$bar" "$percent" "$current_fmt" "$total_fmt"
 }
 
+loading() {
+    local action="$1"
+    local message="$2"
+
+    case "$action" in
+        start)
+            if [ -n "${loading__pid:-}" ]; then
+                kill "$loading__pid" 2>/dev/null || true
+                wait "$loading__pid" 2>/dev/null || true
+            fi
+
+            printf "\e[?25l"
+            loading__message="$message"
+            printf "%s" "$loading__message"
+
+            {
+                while true; do
+                    printf "\r%s .  "  "$loading__message"
+                    sleep 0.4
+                    printf "\r%s .. "  "$loading__message"
+                    sleep 0.4
+                    printf "\r%s ..." "$loading__message"
+                    sleep 0.4
+                done
+            } &
+            loading__pid=$!
+            ;;
+        stop)
+            if [ -n "${loading__pid:-}" ]; then
+                kill "$loading__pid" 2>/dev/null || true
+                wait "$loading__pid" 2>/dev/null || true
+                loading__pid=""
+            fi
+            printf "\e[?25h"
+            ;;
+    esac
+}
+
 set +e
 if [ "$progress_bar" -eq 1 ]; then
+
+    loading start "Calculating total files to transfer"
     total_files=$(calculate_total_files)
+    loading stop
 
     if [ "$total_files" -le 0 ]; then
         total_files=1
     fi
     
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
-    
+
+    echo -e "\nStarting backup." >&2
+
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 2> >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >>"$tmp_err") | grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >"$tmp_out" & # real progress bar
     rsync_pid=$!
     
@@ -750,7 +785,7 @@ elif [ "$progress_file" -eq 1 ]; then
     mv "$tmp_combined" "$tmp_out" || true
     rm -f "$tmp_err" || true
 else
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' >"$tmp_out" 2>&1 # real
+    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' >"$tmp_out" 2>&1 # real normal, no output
     rsync_rc=$?
 fi
 set -e
@@ -766,7 +801,7 @@ if [ "${real_run:-0}" -eq 1 ] && [ -n "$logfile" ]; then
 fi
 rm -f "$tmp_out"
 
-if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -eq 24 ]; then # err 24 = some files vanished -> not fatal
+if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -eq 24 ]; then # err 24 = some files vanished -> not fatal, expected in some cases
     tmp_link="$dest_base/last_tmp"
     ln -s "$snapshot_dir" "$tmp_link"
     mv -T "$tmp_link" "$dest_base/last"    
@@ -774,7 +809,7 @@ if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}
         cd "$dest_base/last"
         mkdir -p mnt tmp sys run proc dev home boot/efi || true
     fi  
-    log "Backup finished and Link updated: $dest_base/last -> $snapshot_dir"  
+    log "Backup finished and Link updated: $dest_base/last -> $snapshot_dir"  # implement error handling that comprehends more than just rsync exit code.
 else
     log_err "Rsync failed (code ${rsync_rc:-}) - the link '$dest_base/last' was NOT updated."
 fi
