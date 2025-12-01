@@ -1,6 +1,6 @@
 #!/bin/bash
-dest_root="/mnt/data/Backup/root"
-dest_home="/mnt/data/Backup/home"
+dest_root="/mnt/backup/root"
+dest_home="/mnt/backup/home"
 lockfile="/tmp/backup_root.lock"
 logfile=""
 
@@ -291,6 +291,7 @@ if [ "$snapshot_found" -eq 1 ]; then
 else
     if [ ! -L "$dest_base/last" ] || [ ! -e "$dest_base/last" ]; then
         if [ "$dry_run" -eq 1 ]; then
+            no_snapshots=1
             echo "No previous snapshots found. Performing first backup analysis and availability check."
         else
             echo "No previous snapshots found. Performing first backup."
@@ -334,7 +335,9 @@ log_err() {
 }
 
 if [ "${dry_run:-1}" -eq 1 ]; then
-    log "Performing dry-run. Use --run to actually copy."
+    if [ "${no_snapshots:-0}" -eq 0 ]; then
+        log "Performing dry-run. Use --run to actually copy."
+    fi
     loading start "Analysing"
 else
     if [ -n "${logfile:-}" ]; then
@@ -432,7 +435,8 @@ summarize_rsync_output() {
             echo -e "\n----- rsync summary -----"
             echo "Files to transfer: $transferred_count"
             echo "Total size to transfer: $(human_size "$total_bytes")"
-            echo "Espaço disponível no destino: $avail_human"
+            echo "Available space on destination: $avail_human"
+            
             echo "---------------------------"
             echo
         } >> "$logfile"
@@ -465,7 +469,7 @@ summarize_rsync_output() {
         printf '%s' "$plain_summary" >>"$logfile" || true
     else
         if [ -t 1 ]; then
-            printf -- '----- rsync summary -----\n'
+            printf -- '\n\n----- rsync summary -----\n'
             printf 'Files to transfer: \033[1m%s\033[0m\n' "$transferred_count"
             printf 'Total size to transfer: \033[1m%s\033[0m\n' "$(human_size "$total_bytes")"
             if [ "$need_red" -eq 1 ] && [ -t 1 ]; then
@@ -473,6 +477,7 @@ summarize_rsync_output() {
             else
                 printf 'Available space on destination: \033[1m%s\033[0m\n' "$avail_human"
             fi
+            printf 'Location: \033[1m%s\033[0m\n' "$dest_base"
             printf -- '---------------------------\n\n'
         else
             printf '%s' "$plain_summary"
