@@ -71,6 +71,44 @@ for arg in "$@"; do
     esac
 done
 
+loading() {
+    local action="$1"
+    local message="$2"
+
+    case "$action" in
+        start)
+            if [ -n "${loading__pid:-}" ]; then
+                kill "$loading__pid" 2>/dev/null || true
+                wait "$loading__pid" 2>/dev/null || true
+            fi
+
+            printf "\e[?25l"
+            loading__message="$message"
+            printf "%s" "$loading__message"
+
+            {
+                while true; do
+                    printf "\r%s.  "  "$loading__message"
+                    sleep 0.4
+                    printf "\r%s.. "  "$loading__message"
+                    sleep 0.4
+                    printf "\r%s..." "$loading__message"
+                    sleep 0.4
+                done
+            } &
+            loading__pid=$!
+            ;;
+        stop)
+            if [ -n "${loading__pid:-}" ]; then
+                kill "$loading__pid" 2>/dev/null || true
+                wait "$loading__pid" 2>/dev/null || true
+                loading__pid=""
+            fi
+            printf "\e[?25h"
+            ;;
+    esac
+}
+
 if [ -z "$target_type" ]; then
     echo -e "\033[1mError: missing primary argument. Use --root or --home.\033[0m" >&2
     show_help
@@ -121,7 +159,7 @@ if ! flock -n 200; then
 fi
 
 cleanup_trap() {
-    if [ "$progress_bar" -eq 1 ]; then
+    if [ "$progress_bar" -eq 1 ] || [ "$dry_run" -eq 1 ]; then
         loading stop 
     fi
     rc=$?
@@ -130,15 +168,13 @@ cleanup_trap() {
 
     rm -f "$tmp_out" "$tmp_err"
 
-    if [ -n "${last_signal:-}" ]; then
-        if [ "${last_signal}" = "INT" ] && [ "${list_files:-0}" -eq 1 ]; then
+    if [ -n "${last_signal:-}" ]; then # dry run cancel message
+        if [ "${last_signal}" = "INT" ] && [ "${dry_run:-1}" -eq 1 ]; then
             sig_msg="Dry-run canceled."
-        else
-            printf "\n----------------------------------------"
         fi
     else
-        fail_msg="Backup failed with exit code ${rc}"
-    fi
+        fail_msg="Backup failed with exit code ${rc}. This message shouldn't appear in any circumstance. debug needed."
+    fi  
 
     if [ "${real_run:-0}" -eq 1 ]; then
         if [ -n "${last_signal:-}" ]; then
@@ -299,6 +335,7 @@ log_err() {
 
 if [ "${dry_run:-1}" -eq 1 ]; then
     log "Performing dry-run. Use --run to actually copy."
+    loading start "Analysing"
 else
     if [ -n "${logfile:-}" ]; then
         log "Performing real backup. Log: ${logfile}"
@@ -596,44 +633,6 @@ draw_progress_bar_count() {
     fi
 
     printf "\r%-50s %3d%% (%s / %s files)" "$bar" "$percent" "$current_fmt" "$total_fmt"
-}
-
-loading() {
-    local action="$1"
-    local message="$2"
-
-    case "$action" in
-        start)
-            if [ -n "${loading__pid:-}" ]; then
-                kill "$loading__pid" 2>/dev/null || true
-                wait "$loading__pid" 2>/dev/null || true
-            fi
-
-            printf "\e[?25l"
-            loading__message="$message"
-            printf "%s" "$loading__message"
-
-            {
-                while true; do
-                    printf "\r%s.  "  "$loading__message"
-                    sleep 0.4
-                    printf "\r%s.. "  "$loading__message"
-                    sleep 0.4
-                    printf "\r%s..." "$loading__message"
-                    sleep 0.4
-                done
-            } &
-            loading__pid=$!
-            ;;
-        stop)
-            if [ -n "${loading__pid:-}" ]; then
-                kill "$loading__pid" 2>/dev/null || true
-                wait "$loading__pid" 2>/dev/null || true
-                loading__pid=""
-            fi
-            printf "\e[?25h"
-            ;;
-    esac
 }
 
 set +e
