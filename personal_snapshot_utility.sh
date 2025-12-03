@@ -73,36 +73,35 @@ done
 
 loading() {
     local action="$1"
-    local message="$2"
+    local msg="$2"
 
     case "$action" in
         start)
-            if [ -n "${loading__pid:-}" ]; then
-                kill "$loading__pid" 2>/dev/null || true
-                wait "$loading__pid" 2>/dev/null || true
+            if [ -n "${pid:-}" ]; then
+                kill "$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
             fi
 
             printf "\e[?25l"
-            loading__message="$message"
-            printf "%s" "$loading__message"
+            printf "%s" "$msg"
 
             {
                 while true; do
-                    printf "\r%s.  "  "$loading__message"
+                    printf "\r%s.  "  "$msg"
                     sleep 0.4
-                    printf "\r%s.. "  "$loading__message"
+                    printf "\r%s.. "  "$msg"
                     sleep 0.4
-                    printf "\r%s..." "$loading__message"
+                    printf "\r%s..." "$msg"
                     sleep 0.4
                 done
             } &
-            loading__pid=$!
+            pid=$!
             ;;
         stop)
-            if [ -n "${loading__pid:-}" ]; then
-                kill "$loading__pid" 2>/dev/null || true
-                wait "$loading__pid" 2>/dev/null || true
-                loading__pid=""
+            if [ -n "${pid:-}" ]; then
+                kill "$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+                pid=""
             fi
             printf "\e[?25h"
             ;;
