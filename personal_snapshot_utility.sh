@@ -327,9 +327,10 @@ log() {
 }
 log_err() {
     if [ "${real_run:-0}" -eq 1 ]; then
-        printf '%s\n' "$*" | tee -a "$logfile" >&2
+        printf '%s\n' "$*" >> "$logfile"
+        printf '\033[31m%s\033[0m\n' "$*" >&2
     else
-        printf '%s\n' "$*" >&2
+        printf '\033[31m%s\033[0m\n' "$*" >&2
     fi
 }
 
@@ -654,7 +655,9 @@ if [ "$progress_bar" -eq 1 ]; then
 
     echo -e "\nStarting backup." >&2
 
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 2> >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >>"$tmp_err") | grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >"$tmp_out" & # real progress bar
+    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 \
+        > >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >"$tmp_out") \
+        2> >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >>"$tmp_err") & # real progress bar
     rsync_pid=$!
     
     current_files=0
@@ -676,7 +679,7 @@ if [ "$progress_bar" -eq 1 ]; then
     
     wait "$rsync_pid"
     rsync_rc=$?
-    
+   
     current_files=$(count_transferred_lines "$tmp_out")
     if [ "$current_files" -gt "$total_files" ]; then
         current_files=$total_files
@@ -790,7 +793,7 @@ else
 fi
 set -e
 summarize_rsync_output "$tmp_out"
-echo -e "\n"
+#echo -e "\n"
 
 if [ "${real_run:-0}" -eq 1 ] && [ -n "$logfile" ]; then
     {
@@ -801,7 +804,7 @@ if [ "${real_run:-0}" -eq 1 ] && [ -n "$logfile" ]; then
 fi
 rm -f "$tmp_out"
 
-if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -eq 24 ]; then # err 24 = some files vanished -> not fatal, expected in some cases
+if [ "${real_run:-0}" -eq 1 ] && ([ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -eq 24 ]); then # err 24 = some files vanished -> not fatal, expected in some cases
     tmp_link="$dest_base/last_tmp"
     ln -s "$snapshot_dir" "$tmp_link"
     mv -T "$tmp_link" "$dest_base/last"    
@@ -809,7 +812,24 @@ if [ "${real_run:-0}" -eq 1 ] && [ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}
         cd "$dest_base/last"
         mkdir -p mnt tmp sys run proc dev home boot/efi || true
     fi  
-    log "Backup finished and Link updated: $dest_base/last -> $snapshot_dir"  # implement error handling that comprehends more than just rsync exit code.
+    log "Backup finished and Link updated: $dest_base/last -> $snapshot_dir"  # implement error handling that comprehends other components more than just rsync exit code.
 else
-    log_err "Rsync failed (code ${rsync_rc:-}) - the link '$dest_base/last' was NOT updated."
+    log_err "Backup failed. The link '$dest_base/last' was NOT updated. "
+    loading start "Cleaning up incomplete snapshot"
+    cp -f -- "$logfile" ${dest_base}/ 2>/dev/null || true
+    if [ -n "${snapshot_dir:-}" ] && [ -d "${snapshot_dir}" ]; then
+        case "${snapshot_dir}" in
+            "${dest_base}"/*)                
+                log_basename="$(basename -- "$logfile")"
+                cp -f -- "$logfile" "${dest_base}/$log_basename" 2>/dev/null || true
+                logfile="${dest_base}/$log_basename"
+                rm -rf -- "${snapshot_dir}" || true
+                ;;
+            *)
+                ;;
+        esac
+    fi
+    loading stop    
+    log_err "Rsync code ${rsync_rc:-}."
+    
 fi
