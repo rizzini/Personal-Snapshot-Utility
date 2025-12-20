@@ -1,0 +1,70 @@
+personal_snapshot_utility() {
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+
+    local seen_root=0 seen_home=0 seen_run=0 seen_dry=0
+    local seen_progress_bar=0 seen_progress_file=0 seen_snapshot=0 seen_list_files=0
+
+    local i w
+    for ((i=1; i<COMP_CWORD; i++)); do
+        w="${COMP_WORDS[i]}"
+        case "$w" in
+            --root) seen_root=1 ;;
+            --home) seen_home=1 ;;
+            --run) seen_run=1 ;;
+            --dry-run) seen_dry=1 ;;
+            --progress-bar) seen_progress_bar=1 ;;
+            --progress-file) seen_progress_file=1 ;;
+            --list-files) seen_list_files=1 ;;
+            --snapshot_suffix) seen_snapshot=1 ;;
+            --snapshot_suffix=*) seen_snapshot=1 ;;
+        esac
+    done
+
+    local opts=()
+
+    if [ "$seen_root" -eq 0 ] && [ "$seen_home" -eq 0 ]; then
+        opts+=("--root" "--home")
+    fi
+
+    if [ "$seen_run" -eq 0 ] && [ "$seen_dry" -eq 0 ] && { [ "$seen_root" -eq 1 ] || [ "$seen_home" -eq 1 ]; }; then
+        opts+=("--run" "--dry-run")
+    fi
+
+    if [ "$seen_dry" -eq 1 ] && [ "$seen_list_files" -eq 0 ]; then
+        opts+=("--list-files")
+    fi
+
+    if [ "$seen_run" -eq 1 ]; then
+        if [ "$seen_progress_bar" -eq 0 ] && [ "$seen_progress_file" -eq 0 ]; then
+            opts+=("--progress-bar" "--progress-file")
+        fi
+        if [ "$seen_snapshot" -eq 0 ]; then
+            opts+=("--snapshot_suffix=")
+        fi
+    fi
+
+    opts+=("--help" "-h")
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "${opts[*]}" -- "$cur") )
+
+        if [[ "$cur" == --snapshot_suffix=* ]]; then
+            if type compopt >/dev/null 2>&1; then
+                compopt -o nospace 2>/dev/null || true
+            fi
+        fi
+
+        return 0
+    fi
+
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [ "$prev" = "--snapshot_suffix" ]; then
+        COMPREPLY=()
+        return 0
+    fi
+
+    COMPREPLY=()
+}
+
+complete -F _personal_snapshot_utility -o default personal_snapshot_utility
