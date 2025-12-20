@@ -688,7 +688,7 @@ if [ "$progress_bar" -eq 1 ]; then
     printf "\n"
     
     if [ -f "$tmp_err" ]; then
-        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' "$tmp_err" >> "$tmp_out" 2>/dev/null || true
+        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent[[:space:]]+[0-9.,]+ bytes|^total size is' "$tmp_err" >> "$tmp_out" 2>/dev/null || true
     fi
     
     rm -f "$tmp_err" || true
@@ -701,7 +701,7 @@ elif [ "$progress_file" -eq 1 ]; then
     tail -n +1 -F "$tmp_out" 2>/dev/null | awk '
         function human_readable(bytes) {
             if (bytes == 0) return "0 B"
-            units = "B KB MB GB TB PB"
+            units = "B KiB MiB GiB TiB PiB"
             scale = 1024
             i = 1
             while (bytes >= scale && i < 7) {
@@ -709,7 +709,10 @@ elif [ "$progress_file" -eq 1 ]; then
                 i++
             }
             split(units, u, " ")
-            return sprintf("%.2f %s", bytes, u[i])
+            if (bytes == int(bytes))
+                return sprintf("%d %s", bytes, u[i])
+            else
+                return sprintf("%.2f %s", bytes, u[i])
         }
 
         BEGIN {
@@ -764,6 +767,56 @@ elif [ "$progress_file" -eq 1 ]; then
             next
         }
 
+        function last_num() {
+            for (i=NF; i>=1; i--) {
+                if ($i ~ /^[0-9,]+$/) {
+                    n = $i
+                    gsub(/[^0-9]/, "", n)
+                    return n
+                }
+            }
+            return ""
+        }
+
+        /^Number of files:/ { next }
+        /^Number of created files:/ { next }
+        /^Number of deleted files:/ { next }
+        /^Total file size:/ { next }
+        /^Literal data:/ { next }
+        /^Matched data:/ { next }
+        /^File list size:/ { next }
+        /^File list generation time:/ { next }
+        /^File list transfer time:/ { next }
+        /^Total bytes sent:/ { next }
+        /^Total bytes received:/ { next }
+        /^sent[[:space:]]+[0-9.,]+ bytes/ { next }
+        /^total size is/ { next }
+
+        /^Number of regular files transferred:/ {
+            files_transferred = $NF
+            gsub(/[^0-9]/, "", files_transferred)
+            next
+        }
+
+        /^Total transferred file size:/ {
+            s = $NF
+            if (s == "bytes") {
+                s = $(NF-1)
+            }
+            gsub(/[^0-9]/, "", s)
+            data_transferred = human_readable(s+0)
+            print "----- copy summary -----"
+            if (files_transferred == "") {
+                f = last_num()
+            } else {
+                f = files_transferred
+            }
+            printf "Files transferred: \033[1m%s\033[0m\n", f
+            printf "Data transferred: \033[1m%s\033[0m\n", data_transferred
+            print "---------------------------"
+            next
+        }
+
         !/^[[:space:]]/ { print }
     ' &
 
@@ -777,12 +830,12 @@ elif [ "$progress_file" -eq 1 ]; then
     cat "$tmp_out" > "$tmp_combined" || true
 
     if [ -f "$tmp_err" ]; then
-        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' "$tmp_err" >> "$tmp_combined" 2>/dev/null || true
+        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent[[:space:]]+[0-9.,]+ bytes|^total size is' "$tmp_err" >> "$tmp_combined" 2>/dev/null || true
     fi
 
-    if grep -qE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' "$tmp_combined" 2>/dev/null; then
+    if grep -qE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" 2>/dev/null; then
         tmp_combined_filtered=$(mktemp /tmp/backup_root.rsync.combined.filtered.XXXXXX)
-        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' "$tmp_combined" > "$tmp_combined_filtered" 2>/dev/null || true
+        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" > "$tmp_combined_filtered" 2>/dev/null || true
         mv "$tmp_combined_filtered" "$tmp_combined" || true
     fi
     mv "$tmp_combined" "$tmp_out" || true
@@ -793,7 +846,6 @@ else
 fi
 set -e
 summarize_rsync_output "$tmp_out"
-#echo -e "\n"
 
 if [ "${real_run:-0}" -eq 1 ] && [ -n "$logfile" ]; then
     {
@@ -812,6 +864,9 @@ if [ "${real_run:-0}" -eq 1 ] && ([ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0
         cd "$dest_base/last"
         mkdir -p mnt tmp sys run proc dev home boot/efi || true
     fi  
+    if [ $progress_bar -eq 1 ] && [ $dry_run -eq 0 ]; then
+        echo -e "\n" 
+    fi    
     log "Backup finished and Link updated: $dest_base/last -> $snapshot_dir"  # implement error handling that comprehends other components more than just rsync exit code.
 else
     log_err "Backup failed. The link '$dest_base/last' was NOT updated. "
