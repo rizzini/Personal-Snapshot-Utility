@@ -29,11 +29,19 @@ Options:
         Adds a suffix to the snapshot name (use with care).
         Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
     --list-files
-        List files that would be copied (only with --dry-run). Useful to grep for specific files or directories.
+        List files that would be copied (only with --dry-run). Useful to grep for specific files or directories. Use sort -h to sort by size.
         Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files${RESET}
+    --exclude=VALUE
+        Add a path to exclude from the listed results when using --list-files.
+        Can be repeated multiple times. VALUE can be:
+            - relative to the home (e.g. .mozilla/)
+            - with tilde (e.g. ~/.cache/mozilla/)
+            - absolute (e.g. /home/you/.mozilla/)
+            - use * as wildcard (e.g. Downloads/*)
+        Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files --exclude=.mozilla/ --exclude=Downloads/*${RESET}
     --progress-bar
         Show aggregate progress bar (only with --run).
-        Example: ${BOLD}sudo personal_snapshot_utility --home --run --progress-bar${RESET}
+        Example: ${BOLD}personal_snapshot_utility --home --run --progress-bar${RESET}
     --progress-file
         Show each file as it is copied (only with --run).
         Example: ${BOLD}personal_snapshot_utility --home --run --progress-file${RESET}
@@ -47,6 +55,7 @@ target_type=""
 action=""
 progress_file=0
 progress_bar=0
+cli_excludes=()
 
 if [ "$#" -eq 0 ]; then
     show_help
@@ -59,6 +68,7 @@ for arg in "$@"; do
         --help|-h) show_help ;;
         --list-files) list_files=1 ;;
         --snapshot_suffix=*) snapshot_suffix="${arg#*=}"; shift ;;
+        --exclude=*) cli_excludes+=("${arg#*=}"); shift ;;
         --progress-file) progress_file=1 ;;
         --progress-bar) progress_bar=1 ;;
         --root) target_type="root" ;;
@@ -133,6 +143,17 @@ fi
 if [ "$list_files" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
     echo -e "\033[1mError: --list-files can only be used with --dry-run.\033[0m" >&2
     show_help
+fi
+
+if [ "${#cli_excludes[@]}" -gt 0 ]; then
+    if [ "$list_files" -ne 1 ] || [ "$dry_run" -ne 1 ]; then
+        echo -e "\033[1mError: --exclude can only be used with --home --dry-run --list-files.\033[0m" >&2
+        show_help
+    fi
+    if [ "$target_type" != "home" ]; then
+        echo -e "\033[1mError: --exclude is supported only for the --home target.\033[0m" >&2
+        show_help
+    fi
 fi
 
 if [ "$progress_file" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
@@ -486,7 +507,51 @@ summarize_rsync_output() {
 }
 
 filter_rsync_output() {
-    awk '
+    local skip_enabled=0
+    local skip_user=""
+    local -a ignore_paths=()
+    if [ "${target_type}" = "home" ] && [ "${dry_run:-1}" -eq 1 ] && [ "${list_files:-0}" -eq 1 ]; then
+        skip_enabled=1
+        skip_user="${SUDO_USER:-${LOGNAME:-${USER:-$(id -un)}}}"
+        ignore_paths=()
+
+        for ex in "${cli_excludes[@]:-}"; do
+            p="$ex"
+            if [[ "$p" == "~/"* ]]; then
+                p="${p/#~\//$skip_user/}"
+            elif [[ "$p" == "/home/$skip_user/"* ]]; then
+                p="${p#/home/}"
+            elif [[ "$p" == /* ]]; then
+                p="${p#/}"
+            else
+                p="${skip_user}/$p"
+            fi
+            p="${p#./}"
+            p="${p#/}"
+            ignore_paths+=("$p")
+        done
+    fi
+
+    local skip_regex=""
+    if [ "${#ignore_paths[@]}" -gt 0 ]; then
+        for p in "${ignore_paths[@]}"; do
+            esc=$(printf '%s' "$p" | sed -e 's/[.^$+?()[\]{}|\\]/\\&/g')
+            esc=$(printf '%s' "$esc" | sed -e 's/\*/.*/g')
+
+            if [ "${esc: -1}" != "/" ] && [ "${esc: -2}" != ".*" ]; then
+                esc="$esc(/|$)"
+            fi
+
+            if [ -z "$skip_regex" ]; then
+                skip_regex="^$esc"
+            else
+                skip_regex="$skip_regex|^$esc"
+            fi
+        done
+        skip_regex="($skip_regex)"
+    fi
+
+    awk -v skip_enabled="$skip_enabled" -v skip_regex="$skip_regex" '
         function human_readable(bytes) {
             if (bytes == 0) return "0 B"
             units = "B KiB MiB GiB TiB PiB EiB"
@@ -509,6 +574,11 @@ filter_rsync_output() {
             size=$1
             name=""
             for (i=2;i<=NF;i++) name = name (i>2?" ":"") $i
+
+            if (skip_enabled == "1" && skip_regex != "") {
+                if (name ~ skip_regex) { next }
+            }
+
             hsize = human_readable(size)
             printf "%-9s | /%s\n", hsize, name
             next
