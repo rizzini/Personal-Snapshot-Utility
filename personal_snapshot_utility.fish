@@ -47,4 +47,6 @@ complete -c personal_snapshot_utility -f -n "__fish_seen_argument --run; and __f
 
 complete -c personal_snapshot_utility -f -n "__fish_seen_argument --dry-run; and __fish_seen_argument --home; and __fish_seen_argument --list-files" \
     -a "--exclude=" -r -d "Exclude path from --list-files (repeatable)"
-
+    
+complete -c personal_snapshot_utility -f -n "__fish_seen_argument --dry-run; and __fish_seen_argument --root; and __fish_seen_argument --list-files" \
+    -a "--exclude=" -r -d "Exclude path from --list-files (repeatable)"
