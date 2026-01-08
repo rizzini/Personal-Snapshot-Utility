@@ -26,8 +26,7 @@ _personal_snapshot_utility() {
     local opts=()
 
     if [ "$seen_root" -eq 0 ] && [ "$seen_home" -eq 0 ]; then
-        # If neither primary target is specified yet, only offer them initially
-        opts=("--root" "--home")
+       opts=("--root" "--home")
     else
         if [ "$seen_list_files" -eq 1 ]; then
             if [ "$seen_dry" -eq 1 ] && [ "$seen_home" -eq 1 ]; then

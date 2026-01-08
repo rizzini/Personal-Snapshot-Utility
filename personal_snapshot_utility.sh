@@ -30,14 +30,14 @@ Options:
         Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
     --list-files
         List files that would be copied (only with --dry-run). Useful to grep for specific files or directories. Use sort -h to sort by size.
-        Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files${RESET}
-    --exclude=VALUE
-        Add a path to exclude from the listed results when using --list-files.
-        Can be repeated multiple times. VALUE can be:
-            - relative to the home (e.g. .mozilla/)
-            - with tilde (e.g. ~/.cache/mozilla/)
-            - absolute (e.g. /home/you/.mozilla/)
-            - use * as wildcard (e.g. Downloads/*)
+        Example: ${BOLD}personal_snapshot_utility --home|--root --dry-run --list-files${RESET}
+            --exclude=VALUE
+                Add a path to exclude from the listed results when using --list-files.
+                Can be repeated multiple times. VALUE can be:
+                    - relative to the home (e.g. .mozilla/)
+                    - with tilde (e.g. ~/.cache/mozilla/)
+                    - absolute (e.g. /home/you/.mozilla/)
+                    - use * as wildcard (e.g. Downloads/*)
         Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files --exclude=.mozilla/ --exclude=Downloads/*${RESET}
     --progress-bar
         Show aggregate progress bar (only with --run).
@@ -55,7 +55,7 @@ target_type=""
 action=""
 progress_file=0
 progress_bar=0
-cli_excludes=()
+cli_file_list_excludes=()
 
 if [ "$#" -eq 0 ]; then
     show_help
@@ -68,7 +68,7 @@ for arg in "$@"; do
         --help|-h) show_help ;;
         --list-files) list_files=1 ;;
         --snapshot_suffix=*) snapshot_suffix="${arg#*=}"; shift ;;
-        --exclude=*) cli_excludes+=("${arg#*=}"); shift ;;
+        --exclude=*) cli_file_list_excludes+=("${arg#*=}"); shift ;;
         --progress-file) progress_file=1 ;;
         --progress-bar) progress_bar=1 ;;
         --root) target_type="root" ;;
@@ -145,13 +145,9 @@ if [ "$list_files" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
     show_help
 fi
 
-if [ "${#cli_excludes[@]}" -gt 0 ]; then
+if [ "${#cli_file_list_excludes[@]}" -gt 0 ]; then
     if [ "$list_files" -ne 1 ] || [ "$dry_run" -ne 1 ]; then
         echo -e "\033[1mError: --exclude can only be used with --home --dry-run --list-files.\033[0m" >&2
-        show_help
-    fi
-    if [ "$target_type" != "home" ]; then
-        echo -e "\033[1mError: --exclude is supported only for the --home target.\033[0m" >&2
         show_help
     fi
 fi
@@ -510,12 +506,12 @@ filter_rsync_output() {
     local skip_enabled=0
     local skip_user=""
     local -a ignore_paths=()
-    if [ "${target_type}" = "home" ] && [ "${dry_run:-1}" -eq 1 ] && [ "${list_files:-0}" -eq 1 ]; then
+    if [ "${dry_run:-1}" -eq 1 ] && [ "${list_files:-0}" -eq 1 ]; then
         skip_enabled=1
         skip_user="${SUDO_USER:-${LOGNAME:-${USER:-$(id -un)}}}"
         ignore_paths=()
 
-        for ex in "${cli_excludes[@]:-}"; do
+        for ex in "${cli_file_list_excludes[@]:-}"; do
             p="$ex"
             if [[ "$p" == "~/"* ]]; then
                 p="${p/#~\//$skip_user/}"
