@@ -505,14 +505,14 @@ summarize_rsync_output() {
 
 filter_rsync_output() {
     local skip_enabled=0
-    local skip_user=""
-    local -a ignore_paths=()
-    if [ "${dry_run:-1}" -eq 1 ] && [ "${list_files:-0}" -eq 1 ]; then
+    local skip_regex=""
+    
+    if [ "${#cli_file_list_excludes[@]}" -gt 0 ]; then
         skip_enabled=1
-        skip_user="${SUDO_USER:-${LOGNAME:-${USER:-$(id -un)}}}"
-        ignore_paths=()
+        local skip_user="${SUDO_USER:-${LOGNAME:-${USER:-$(id -un)}}}"
+        local -a ignore_paths=()
 
-        for ex in "${cli_file_list_excludes[@]:-}"; do
+        for ex in "${cli_file_list_excludes[@]}"; do
             p="$ex"
             if [[ "$p" == "~/"* ]]; then
                 p="${p/#~\//$skip_user/}"
@@ -527,10 +527,7 @@ filter_rsync_output() {
             p="${p#/}"
             ignore_paths+=("$p")
         done
-    fi
 
-    local skip_regex=""
-    if [ "${#ignore_paths[@]}" -gt 0 ]; then
         for p in "${ignore_paths[@]}"; do
             esc=$(printf '%s' "$p" | sed -e 's/[.^$+?()[\]{}|\\]/\\&/g')
             esc=$(printf '%s' "$esc" | sed -e 's/\*/.*/g')
@@ -587,7 +584,7 @@ filter_rsync_output() {
 
 if [ "$dry_run" -eq 1 ]; then
     tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
-    if [ "$list_files" -eq 1 ]; then
+    if [ "${list_files:-0}" -eq 1 ]; then
         ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" -i --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry list
     else
         ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry 
@@ -647,8 +644,8 @@ if [ "$dry_run" -eq 1 ]; then
 
         mv "$tmp_new" "$tmp_out"
         trap 'last_signal=INT; exit' INT
-    fi
-    if [ "$list_files" -eq 1 ]; then
+    fi   
+    if [ "${list_files:-0}" -eq 1 ]; then
         filter_rsync_output "$tmp_out"
     fi
     summarize_rsync_output "$tmp_out"
