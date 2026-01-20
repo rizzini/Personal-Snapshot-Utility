@@ -25,12 +25,10 @@ Options:
         Actually perform the backup (requires root privileges).
     --dry-run
         Simulate execution without making changes.
-    --snapshot_suffix=NAME
-        Adds a suffix to the snapshot name (use with care).
-        Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
     --list-files
         List files that would be copied (only with --dry-run). Useful to grep for specific files or directories. Use sort -h to sort by size.
         Example: ${BOLD}personal_snapshot_utility --home|--root --dry-run --list-files${RESET}
+        Exclude paths (works only with --list-files):
             --exclude=VALUE
                 Add a path to exclude from the listed results when using --list-files.
                 Can be repeated multiple times. VALUE can be:
@@ -38,7 +36,10 @@ Options:
                     - with tilde (e.g. ~/.cache/mozilla/)
                     - absolute (e.g. /home/you/.mozilla/)
                     - use * as wildcard (e.g. Downloads/*)
-        Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files --exclude=.mozilla/ --exclude=Downloads/*${RESET}
+                Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files --exclude=.mozilla/ --exclude=Downloads/*${RESET}
+    --snapshot_suffix=NAME
+        Adds a suffix to the snapshot name (use with care).
+        Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
     --progress-bar
         Show aggregate progress bar (only with --run).
         Example: ${BOLD}personal_snapshot_utility --home --run --progress-bar${RESET}
@@ -781,8 +782,35 @@ elif [ "$progress_file" -eq 1 ]; then
                 return sprintf("%.2f %s", bytes, u[i])
         }
 
+        function get_color(dir_name,    color_index) {
+            if (!(dir_name in dir_colors)) {
+                color_index = (dir_count % 6) + 1
+                dir_colors[dir_name] = colors[color_index]
+                dir_count++
+            }
+            return dir_colors[dir_name]
+        }
+
+        function get_directory(filepath,    parts, dir_parts_count) {
+            split(filepath, parts, "/")
+            dir_parts_count = length(parts) - 1
+            
+            if (dir_parts_count >= 1) {
+                return parts[dir_parts_count]
+            }
+            return "/"
+        }
+
         BEGIN {
             current_progress = "0%"
+            dir_count = 0
+            colors[1] = "\033[38;5;81m"    # cyan/blue
+            colors[2] = "\033[38;5;118m"   # green
+            colors[3] = "\033[38;5;208m"   # orange
+            colors[4] = "\033[38;5;198m"   # magenta/pink
+            colors[5] = "\033[38;5;226m"   # yellow
+            colors[6] = "\033[38;5;51m"    # bright cyan
+            reset = "\033[0m"
         }
 
         /building file list/ { next }
@@ -828,8 +856,11 @@ elif [ "$progress_file" -eq 1 ]; then
                 filename = filename (i>2 ? " " : "") $i
             }
 
+            current_dir = get_directory(filename)
+            color = get_color(current_dir)
+            
             hr_size = human_readable(size)
-            printf "%-4s |  %-10s | /%s\n", current_progress, hr_size, filename
+            printf "%-4s |  %-10s | %s/%s%s\n", current_progress, hr_size, color, filename, reset
             next
         }
 
