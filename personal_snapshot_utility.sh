@@ -275,6 +275,9 @@ excludes_root=(
 )
 
 excludes_home=(
+    ".config/google-chrome/Default/Service Worker/CacheStorage"
+    .cache/mozilla
+    .cache/mesa_shader_cache
 )
 
 exclude_logs=(
@@ -598,16 +601,15 @@ if [ "$dry_run" -eq 1 ]; then
             BEGIN {
                 red="\033[91m"
                 reset="\033[0m"
-                kde_error_count = 0
                 other_error_count = 0
             }
 
-            /^rsync: \[generator\] copy_xattrs: lsetxattr\(.*"user\\.kde\\.fm\\.viewproperties#1"\)/ {
-                kde_error_count++
+            # Descarta erros de KDE xattr (user.kde.fm.viewproperties)
+            /lsetxattr.*user\.kde\.fm\.viewproperties/ {
                 next
             }
 
-            /^rsync:/ && !/copy_xattrs: lsetxattr.*user\\.kde\\.fm\\.viewproperties/ {
+            /^rsync:/ {
                 other_error_count++
                 if (is_tty)
                     print red $0 reset
@@ -623,16 +625,7 @@ if [ "$dry_run" -eq 1 ]; then
                     else
                         print
                 }
-                kde_error_count = 0
                 other_error_count = 0
-                next
-            }
-
-            /error:/ && !(/user\\.kde\\.fm\\.viewproperties/) {
-                if (is_tty)
-                    print red $0 reset
-                else
-                    print
                 next
             }
 
