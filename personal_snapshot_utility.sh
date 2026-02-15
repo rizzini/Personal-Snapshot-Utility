@@ -605,7 +605,7 @@ if [ "$dry_run" -eq 1 ]; then
             }
 
             # Descarta erros de KDE xattr (user.kde.fm.viewproperties)
-            /lsetxattr.*user\.kde\.fm\.viewproperties/ {
+            /lsetxattr/ {
                 next
             }
 
