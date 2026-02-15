@@ -278,6 +278,7 @@ excludes_home=(
     ".config/google-chrome/Default/Service Worker/CacheStorage"
     .cache/mozilla
     .cache/mesa_shader_cache
+    .cache/thumbnails
 )
 
 exclude_logs=(
@@ -548,7 +549,7 @@ filter_rsync_output() {
         skip_regex="($skip_regex)"
     fi
 
-    awk -v skip_enabled="$skip_enabled" -v skip_regex="$skip_regex" '
+    awk -v target_type="$target_type" -v skip_enabled="$skip_enabled" -v skip_regex="$skip_regex" '
         function human_readable(bytes) {
             if (bytes == 0) return "0 B"
             units = "B KiB MiB GiB TiB PiB EiB"
@@ -577,7 +578,7 @@ filter_rsync_output() {
             }
 
             hsize = human_readable(size)
-            printf "%-9s | /%s\n", hsize, name
+            printf "%-9s | /"target_type"/%s\n", hsize, name
             next
         }
 
