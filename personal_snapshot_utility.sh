@@ -756,7 +756,7 @@ elif [ "$progress_file" -eq 1 ]; then
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" & # real progress file
     rsync_pid=$!
     
-    tail -n +1 -F "$tmp_out" 2>/dev/null | awk '
+    tail -n +1 -F "$tmp_out" 2>/dev/null | awk -v target_type="$target_type" '
         function human_readable(bytes) {
             if (bytes == 0) return "0 B"
             units = "B KiB MiB GiB TiB PiB"
@@ -851,7 +851,11 @@ elif [ "$progress_file" -eq 1 ]; then
             color = get_color(current_dir)
             
             hr_size = human_readable(size)
-            printf "%-4s |  %-10s | %s/%s%s\n", current_progress, hr_size, color, filename, reset
+            if (target_type == "home") {
+                printf "%-4s |  %-10s | %s/%s/%s%s\n", current_progress, hr_size, color, target_type, filename, reset
+            } else {
+                printf "%-4s |  %-10s | %s/%s%s\n", current_progress, hr_size, color, filename, reset
+            }
             next
         }
 
