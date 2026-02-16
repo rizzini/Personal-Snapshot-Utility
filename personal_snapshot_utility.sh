@@ -279,6 +279,7 @@ excludes_home=(
     .cache/mozilla
     .cache/mesa_shader_cache
     .cache/thumbnails
+    .cache/google-chrome
 )
 
 exclude_logs=(
@@ -578,7 +579,13 @@ filter_rsync_output() {
             }
 
             hsize = human_readable(size)
-            printf "%-9s | /"target_type"/%s\n", hsize, name
+
+
+            if (target_type == "home") {
+                printf "%-9s | /%s/%s\n", hsize, target_type, name
+            } else {
+                printf "%-9s | /%s\n", hsize, name
+            }
             next
         }
 
