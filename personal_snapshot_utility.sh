@@ -148,34 +148,34 @@ if [ "$dry_run" -eq 0 ]; then
 fi
 
 if [ "$list_files" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
-    echo -e "\033[1mError: --list-files can only be used with --dry-run.\033[0m" >&2
+    echo -e "\033[1;31mError: --list-files can only be used with --dry-run.\033[0m" >&2
     show_help
 fi
 
 if [ "${#cli_file_list_excludes[@]}" -gt 0 ]; then
     if [ "$list_files" -ne 1 ] || [ "$dry_run" -ne 1 ]; then
-        echo -e "\033[1mError: --exclude can only be used with --home --dry-run --list-files.\033[0m" >&2
+        echo -e "\033[1;31mError: --exclude can only be used with --home --dry-run --list-files.\033[0m" >&2
         show_help
     fi
 fi
 
 if [ "$progress_file" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
-    echo -e "\033[1mError: --progress-file can only be used with --run.\033[0m" >&2
+    echo -e "\033[1;31mError: --progress-file can only be used with --run.\033[0m" >&2
     show_help
 fi
 
 if [ "$progress_bar" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
-    echo -e "\033[1mError: --progress-bar can only be used with --run.\033[0m" >&2
+    echo -e "\033[1;31mError: --progress-bar can only be used with --run.\033[0m" >&2
     show_help
 fi
 
 if [ "$no_color_flag" -eq 1 ] && [ "$progress_file" -ne 1 ]; then
-    echo -e "\033[1mError: --no-color can only be used with --progress-file.\033[0m" >&2
+    echo -e "\033[1;31mError: --no-color can only be used with --progress-file.\033[0m" >&2
     show_help
 fi
 
 if [ -n "$snapshot_suffix" ] && [ "$dry_run" -eq 1 ]; then
-    echo -e "\033[1mError: --snapshot_suffix can only be used with --run.\033[0m" >&2
+    echo -e "\033[1;31mError: --snapshot_suffix can only be used with --run.\033[0m" >&2
     show_help
 fi
 
