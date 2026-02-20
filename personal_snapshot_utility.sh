@@ -46,6 +46,9 @@ Options:
     --progress-file
         Show each file as it is copied (only with --run).
         Example: ${BOLD}personal_snapshot_utility --home --run --progress-file${RESET}
+        --no-color 
+            Disable per-folder colorization in --progress-file output.
+            Example: ${BOLD}personal_snapshot_utility --home --run --progress-file --no-color${RESET}
 EOF
     exit 0
 }
@@ -56,6 +59,8 @@ target_type=""
 action=""
 progress_file=0
 progress_bar=0
+arg_color=1
+no_color_flag=0
 cli_file_list_excludes=()
 
 if [ "$#" -eq 0 ]; then
@@ -68,6 +73,7 @@ for arg in "$@"; do
         --dry-run) action="dry-run" ;;
         --help|-h) show_help ;;
         --list-files) list_files=1 ;;
+        --no-color) arg_color=0; no_color_flag=1 ;;
         --snapshot_suffix=*) snapshot_suffix="${arg#*=}"; shift ;;
         --exclude=*) cli_file_list_excludes+=("${arg#*=}"); shift ;;
         --progress-file) progress_file=1 ;;
@@ -160,6 +166,11 @@ fi
 
 if [ "$progress_bar" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
     echo -e "\033[1mError: --progress-bar can only be used with --run.\033[0m" >&2
+    show_help
+fi
+
+if [ "$no_color_flag" -eq 1 ] && [ "$progress_file" -ne 1 ]; then
+    echo -e "\033[1mError: --no-color can only be used with --progress-file.\033[0m" >&2
     show_help
 fi
 
@@ -580,7 +591,6 @@ filter_rsync_output() {
 
             hsize = human_readable(size)
 
-
             if (target_type == "home") {
                 printf "%-9s | /%s/%s\n", hsize, target_type, name
             } else {
@@ -763,7 +773,7 @@ elif [ "$progress_file" -eq 1 ]; then
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" & # real progress file
     rsync_pid=$!
     
-    tail -n +1 -F "$tmp_out" 2>/dev/null | awk -v target_type="$target_type" '
+    tail -n +1 -F "$tmp_out" 2>/dev/null | awk -v target_type="$target_type" -v arg_color="$arg_color" '
         function human_readable(bytes) {
             if (bytes == 0) return "0 B"
             units = "B KiB MiB GiB TiB PiB"
@@ -855,7 +865,12 @@ elif [ "$progress_file" -eq 1 ]; then
             }
 
             current_dir = get_directory(filename)
-            color = get_color(current_dir)
+
+            if (arg_color) {
+                color = get_color(current_dir)
+            } else {
+                color = ""
+            }
             
             hr_size = human_readable(size)
             if (target_type == "home") {
