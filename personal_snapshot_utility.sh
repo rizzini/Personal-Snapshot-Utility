@@ -434,42 +434,59 @@ count_transferred_lines() {
         return
     fi
 
+    local transferred=$(grep 'Number of regular files transferred:' "$f" 2>/dev/null | tail -1 | awk '{print $NF}' | tr -d ',.')
+    
+    if [ -n "$transferred" ] && [ "$transferred" -gt 0 ] 2>/dev/null; then
+        echo "$transferred"
+        return
+    fi
+
+    transferred=$(grep 'Number of created files:' "$f" 2>/dev/null | tail -1 | awk -F'[(:,.]' '{for(i=NF;i>=1;i--) if($i ~ /^[0-9]+$/) {print $i; break}}' | head -1)
+    
+    if [ -n "$transferred" ] && [ "$transferred" -gt 0 ] 2>/dev/null; then
+        echo "$transferred"
+        return
+    fi
+
     local n1
     n1=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count>0) print count; else print 0 }' "$f")
+    echo "$n1"
+}
 
-    local n2
-    n2=$(grep -c '^file has vanished:' "$f" || true)
-
-    local n3=0
-    if grep -qF 'File list generation time:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
-    if grep -qF 'File list size:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
-    if grep -qF 'File list transfer time:' "$f" 2>/dev/null; then n3=$((n3+1)); fi
-
-    echo $((n1 + n2 + n3))
+count_listed_files() {
+    local f="$1"
+    if [ ! -f "$f" ]; then
+        echo 0
+        return
+    fi
+    
+    awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count>0) print count; else print 0 }' "$f"
 }
 
 summarize_rsync_output() {
-        if [ "${LANG%%.*}" = "pt_BR" ]; then
-            transferred_count=$(count_transferred_lines "$1")
-            transferred_count=$(printf "%'d" "$transferred_count" | sed "s/,/./g")     
+        local pre_calculated_count="${2:-}"
+        
+        if [ -n "$pre_calculated_count" ]; then
+            transferred_count="$pre_calculated_count"
         else
+
             transferred_count=$(count_transferred_lines "$1")
-    fi
+        fi
+        
+        if [ "${LANG%%.*}" = "pt_BR" ]; then
+            transferred_count=$(printf "%'d" "$transferred_count" | sed "s/,/./g")     
+        fi
 
     total_bytes=$(awk '{sum += $1} END{ if (sum>0) printf "%.0f", sum; else print 0 }' "$1")
     
     rsync_total_bytes="$total_bytes"
     min_required=$(( total_bytes + total_bytes / 10 ))
 
-    if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then
-        avail_bytes=$(df --output=avail -B1 "$dest_base" | tail -n1)
-        avail_human=$(human_size "$avail_bytes")
-        
+    if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then      
         {
             echo -e "\n----- rsync summary -----"
-            echo "Files to transfer: $transferred_count"
-            echo "Total size to transfer: $(human_size "$total_bytes")"
-            echo "Available space on destination: $avail_human"
+            echo "Files transfered: $transferred_count"
+            echo "Total size transfered: $(human_size "$total_bytes")"
             
             echo "---------------------------"
             echo
@@ -610,6 +627,7 @@ if [ "$dry_run" -eq 1 ]; then
     else
         ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry 
     fi
+    
     if [ -f "$tmp_out" ]; then
         tmp_new=$(mktemp /tmp/backup_root.rsync.XXXXXX)
 
@@ -656,10 +674,13 @@ if [ "$dry_run" -eq 1 ]; then
         mv "$tmp_new" "$tmp_out"
         trap 'last_signal=INT; exit' INT
     fi   
+    
+    calculated_count=$(count_transferred_lines "$tmp_out")
+    
     if [ "${list_files:-0}" -eq 1 ]; then
         filter_rsync_output "$tmp_out"
     fi
-    summarize_rsync_output "$tmp_out"
+    summarize_rsync_output "$tmp_out" "$calculated_count"
     rm -f "$tmp_out"
     rm -rf "$snapshot_dir"
     exit 0
@@ -672,7 +693,23 @@ calculate_total_files() {
 
     ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
    
-    local total_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$rsync_dry_tmp")
+    local total_files=$(grep 'Number of regular files transferred:' "$rsync_dry_tmp" 2>/dev/null | tail -1 | awk '{print $NF}' | tr -d ',.')
+    
+    if [ -n "$total_files" ] && [ "$total_files" -gt 0 ] 2>/dev/null; then
+        rm -f "$rsync_dry_tmp"
+        printf "%s" "$total_files"
+        return
+    fi
+    
+    total_files=$(grep 'Number of created files:' "$rsync_dry_tmp" 2>/dev/null | tail -1 | awk -F'[(:,.]' '{for(i=NF;i>=1;i--) if($i ~ /^[0-9]+$/) {print $i; break}}' | head -1)
+    
+    if [ -n "$total_files" ] && [ "$total_files" -gt 0 ] 2>/dev/null; then
+        rm -f "$rsync_dry_tmp"
+        printf "%s" "$total_files"
+        return
+    fi
+    
+    total_files=$(awk '($1 ~ /^[0-9]+$/) { count++ } END { if (count > 0) print count; else print 0 }' "$rsync_dry_tmp")
     
     rm -f "$rsync_dry_tmp"
     printf "%s" "$total_files"
@@ -947,7 +984,7 @@ elif [ "$progress_file" -eq 1 ]; then
         grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent[[:space:]]+[0-9.,]+ bytes|^total size is' "$tmp_err" >> "$tmp_combined" 2>/dev/null || true
     fi
 
-    if grep -qE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" 2>/dev/null; then
+    if grep -qE 'xfr.|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" 2>/dev/null; then
         tmp_combined_filtered=$(mktemp /tmp/backup_root.rsync.combined.filtered.XXXXXX)
         grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" > "$tmp_combined_filtered" 2>/dev/null || true
         mv "$tmp_combined_filtered" "$tmp_combined" || true
