@@ -484,7 +484,7 @@ summarize_rsync_output() {
 
     if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then      
         {
-            echo -e "\n----- rsync summary -----"
+            echo -e "\n----- Backup summary -----"
             echo "Files transfered: $transferred_count"
             echo "Total size transfered: $(human_size "$total_bytes")"
             
@@ -492,7 +492,7 @@ summarize_rsync_output() {
             echo
         } >> "$logfile"
     else
-        plain_summary=$(printf "\n----- rsync summary -----\nFiles to transfer: %s\n" "$transferred_count")
+        plain_summary=$(printf "\n----- Backup summary -----\nFiles to transfer: %s\n" "$transferred_count")
         plain_summary+=$(printf "Total size to transfer: %s\n" "$(human_size "$total_bytes")")
         avail_bytes=$(df --output=avail -B1 "$dest_base" | tail -n1)
         avail_human=$(human_size "$avail_bytes")
@@ -520,7 +520,7 @@ summarize_rsync_output() {
         printf '%s' "$plain_summary" >>"$logfile" || true
     else
         if [ -t 1 ]; then
-            printf -- '\n\n----- rsync summary -----\n'
+            printf -- '\n\n----- Dry-run summary -----\n'
             printf 'Files to transfer: \033[1m%s\033[0m\n' "$transferred_count"
             printf 'Total size to transfer: \033[1m%s\033[0m\n' "$(human_size "$total_bytes")"
             if [ "$need_red" -eq 1 ] && [ -t 1 ]; then
@@ -956,7 +956,7 @@ elif [ "$progress_file" -eq 1 ]; then
             }
             gsub(/[^0-9]/, "", s)
             data_transferred = human_readable(s+0)
-            print "----- copy summary -----"
+            print "----- Backup summary -----"
             if (files_transferred == "") {
                 f = last_num()
             } else {
