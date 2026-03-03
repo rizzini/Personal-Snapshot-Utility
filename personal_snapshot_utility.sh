@@ -619,9 +619,9 @@ filter_rsync_output() {
 if [ "$dry_run" -eq 1 ]; then
     tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
     if [ "${list_files:-0}" -eq 1 ]; then
-        ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" -i --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry list
+        ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" -i --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry list
     else
-        ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry 
+        ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry
     fi
     
     if [ -f "$tmp_out" ]; then
@@ -687,7 +687,7 @@ tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
 calculate_total_files() {
     local rsync_dry_tmp=$(mktemp /tmp/backup_root.rsync.dry.XXXXXX)
 
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
+    ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" --dry-run --out-format='%l %n' >"$rsync_dry_tmp" 2>&1 || true
    
     local total_files=$(grep 'Number of regular files transferred:' "$rsync_dry_tmp" 2>/dev/null | tail -1 | awk '{print $NF}' | tr -d ',.')
     
@@ -763,7 +763,7 @@ if [ "$progress_bar" -eq 1 ]; then
 
     echo -e "\nStarting backup." >&2
 
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 \
+    ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 \
         > >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >"$tmp_out") \
         2> >(grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s' >>"$tmp_err") & # real progress bar
     rsync_pid=$!
@@ -803,7 +803,7 @@ if [ "$progress_bar" -eq 1 ]; then
 elif [ "$progress_file" -eq 1 ]; then
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
 
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" & # real progress file
+    ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' --info=progress2 >"$tmp_out" 2>"$tmp_err" & # real progress file
     rsync_pid=$!
     
     tail -n +1 -F "$tmp_out" 2>/dev/null | awk -v target_type="$target_type" -v arg_color="$arg_color" '
@@ -988,7 +988,7 @@ elif [ "$progress_file" -eq 1 ]; then
     mv "$tmp_combined" "$tmp_out" || true
     rm -f "$tmp_err" || true
 else
-    ionice -c3 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' >"$tmp_out" 2>&1 # real normal, no output
+    ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' >"$tmp_out" 2>&1 # real normal, no output
     rsync_rc=$?
 fi
 set -e
