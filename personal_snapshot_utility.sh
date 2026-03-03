@@ -215,12 +215,8 @@ cleanup_trap() {
                 case "${snapshot_dir}" in
                     "${dest_base}"/*)
                         if [ -t 0 ] && [ -t 1 ]; then
-                            echo -en "Remove incomplete snapshot?\n${snapshot_dir}\n[y/N]: "
-                            read -r answer
-                            if [ "${answer}" = "s" ] || [ "${answer}" = "S" ] || [ "${answer}" = "y" ] || [ "${answer}" = "Y" ]; then
-                                echo "Removing incomplete snapshot: ${snapshot_dir}" | tee -a "${logfile}"
+                                echo "Removed incomplete snapshot."
                                 rm -rf -- "${snapshot_dir}" || true
-                            fi
                         fi
                         ;;
                 esac
