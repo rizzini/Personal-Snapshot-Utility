@@ -1,6 +1,7 @@
 #!/bin/bash
-dest_root="/mnt/backup/root"
-dest_home="/mnt/backup/home"
+mountpoint="/mnt/backup"
+dest_root="root"
+dest_home="home"
 lockfile="/tmp/backup_root.lock"
 logfile=""
 
@@ -11,8 +12,8 @@ show_help() {
 Usage: personal_snapshot_utility --root|--home --run|--dry-run [--list-files] [--progress-bar|--progress-file] [--snapshot_suffix=NAME]
 
 Incremental backup with rsync + hard links. Two main targets:
-    --root : backup of '/' and saves snapshots in $dest_root/
-    --home : backup of '/home' and saves snapshots in $dest_home/
+    --root : backup of '/' and saves snapshots in ${mountpoint}/${dest_root}/
+    --home : backup of '/home' and saves snapshots in ${mountpoint}/$dest_home/
 
 Options:
     -h, --help
@@ -186,6 +187,15 @@ if ! flock -n 200; then
     exit 1
 fi
 
+remount_snapshots_mountpoint() {
+    if [ "$1" == "rw" ]; then
+        mount -o remount,rw,noatime,nodiratime,commit=60 "$mountpoint" 1>/dev/null
+    elif [ "$1" == "ro" ]; then
+        mount -o remount,ro,noatime,nodiratime,commit=60 "$mountpoint" 1>/dev/null
+    fi
+}
+remount_snapshots_mountpoint rw
+
 cleanup_trap() {
     if [ "$progress_bar" -eq 1 ] || [ "$dry_run" -eq 1 ]; then
         loading stop 
@@ -251,6 +261,7 @@ cleanup_trap() {
             esac
         fi
     fi
+    remount_snapshots_mountpoint ro
 }
 
 last_signal=""
@@ -259,11 +270,11 @@ trap 'last_signal=TERM; exit' TERM
 trap 'cleanup_trap' EXIT
 
 if [ "$target_type" = "root" ]; then
-    dest_base="$dest_root"
+    dest_base="${mountpoint}"/"${dest_root}"
     source="/"
     name_prefix="root"
 else
-    dest_base="$dest_home"
+    dest_base="${mountpoint}"/"${dest_home}"
     source="/home/"
     name_prefix="home"
 fi
@@ -280,7 +291,6 @@ excludes_root=(
     /home
     /boot/efi
 )
-
 excludes_home=(
     ".config/google-chrome/Default/Service Worker/CacheStorage"
     .cache/mozilla
@@ -476,7 +486,7 @@ summarize_rsync_output() {
     total_bytes=$(awk '{sum += $1} END{ if (sum>0) printf "%.0f", sum; else print 0 }' "$1")
     
     rsync_total_bytes="$total_bytes"
-    min_required=$(( total_bytes + total_bytes / 10 ))
+    min_required=$(( total_bytes + total_bytes / 20 ))
 
     if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then      
         {
@@ -1033,5 +1043,4 @@ else
     fi
     loading stop    
     log_err "Rsync code ${rsync_rc:-}."
-    
 fi
