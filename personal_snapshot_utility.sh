@@ -188,11 +188,7 @@ if ! flock -n 200; then
 fi
 
 remount_snapshots_mountpoint() {
-    if [ "$1" == "rw" ]; then
-        mount -o remount,rw,noatime,nodiratime,commit=60 "$mountpoint" 1>/dev/null
-    elif [ "$1" == "ro" ]; then
-        mount -o remount,ro,noatime,nodiratime,commit=60 "$mountpoint" 1>/dev/null
-    fi
+    mount -o remount,${1},noatime,nodiratime,commit=60 "$mountpoint" 1>/dev/null
 }
 remount_snapshots_mountpoint rw
 
@@ -297,6 +293,7 @@ excludes_home=(
     .cache/mesa_shader_cache
     .cache/thumbnails
     .cache/google-chrome
+    .local/share/waydroid/data/media
 )
 
 exclude_logs=(
