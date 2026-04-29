@@ -199,6 +199,27 @@ remount_snapshots_mountpoint() {
 }
 remount_snapshots_mountpoint rw
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+load_excludes() {
+    local file="$1"
+    local -n out_array=$2
+
+    if [ ! -f "$file" ]; then
+        echo "Warning: exclude file not found: $file" >&2
+        return
+    fi
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+
+        [[ -z "$line" || "$line" == \#* ]] && continue
+
+        out_array+=("$line")
+    done < "$file"
+}
+
 cleanup_trap() {
     if [ "$progress_bar" -eq 1 ] || [ "$dry_run" -eq 1 ]; then
         loading stop 
@@ -282,26 +303,12 @@ else
     name_prefix="home"
 fi
 
-excludes_root=(
-    /proc
-    /sys
-    /dev
-    /run
-    /tmp
-    /mnt
-    /media
-    /lost+found
-    /home
-    /boot/efi
-)
-excludes_home=(
-    ".config/google-chrome/Default/Service Worker/CacheStorage"
-    .cache/mozilla
-    .cache/mesa_shader_cache
-    .cache/thumbnails
-    .cache/google-chrome
-    #.local/share/waydroid/data/media
-)
+excludes_root=()
+excludes_home=()
+
+load_excludes "$script_dir/exclude_root.conf" excludes_root
+load_excludes "$script_dir/exclude_home.conf" excludes_home
+
 
 exclude_logs=(
     "backup_*.log"
