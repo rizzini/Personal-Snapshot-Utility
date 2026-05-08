@@ -26,18 +26,20 @@ Options:
         Actually perform the backup (requires root privileges).
     --dry-run
         Simulate execution without making changes.
-    --list-files
-        List files that would be copied (only with --dry-run). Useful to grep for specific files or directories. Use sort -h to sort by size.
-        Example: ${BOLD}personal_snapshot_utility --home|--root --dry-run --list-files${RESET}
-        Exclude paths (works only with --list-files):
-            --exclude=VALUE
-                Add a path to exclude from the listed results when using --list-files.
-                Can be repeated multiple times. VALUE can be:
-                    - relative to the home (e.g. .mozilla/)
-                    - with tilde (e.g. ~/.cache/mozilla/)
-                    - absolute (e.g. /home/you/.mozilla/)
-                    - use * as wildcard (e.g. Downloads/*)
-                Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files --exclude=.mozilla/ --exclude=Downloads/*${RESET}
+        --list-files
+            List files that would be copied. Useful to grep for specific files or directories.
+            Example: ${BOLD}personal_snapshot_utility --home|--root --dry-run --list-files${RESET}
+            Exclude paths (works only with --list-files):
+                --exclude=VALUE
+                    Add a path to exclude from the listed results when using --list-files.
+                    Can be repeated multiple times. VALUE can be:
+                        - relative to the home (e.g. .mozilla/)
+                        - with tilde (e.g. ~/.cache/mozilla/)
+                        - absolute (e.g. /home/you/.mozilla/)
+                        - use * as wildcard (e.g. Downloads/*)
+                    Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files --exclude=.mozilla/ --exclude=Downloads/*${RESET}
+    --list-snapshots
+
     --snapshot_suffix=NAME
         Adds a suffix to the snapshot name (use with care).
         Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
@@ -54,7 +56,6 @@ EOF
     exit 0
 }
 
-dry_run=1
 list_files=0
 target_type=""
 action=""
@@ -63,6 +64,7 @@ progress_bar=0
 arg_color=1
 no_color_flag=0
 cli_file_list_excludes=()
+list_snapshots=0
 
 if [ "$#" -eq 0 ]; then
     show_help
@@ -74,6 +76,7 @@ for arg in "$@"; do
         --dry-run) action="dry-run" ;;
         --help|-h) show_help ;;
         --list-files) list_files=1 ;;
+        --list-snapshots) list_snapshots=1 ;;
         --no-color) arg_color=0; no_color_flag=1 ;;
         --snapshot_suffix=*) snapshot_suffix="${arg#*=}"; shift ;;
         --exclude=*) cli_file_list_excludes+=("${arg#*=}"); shift ;;
@@ -130,42 +133,32 @@ if [ -z "$target_type" ]; then
     echo -e "\033[1mError: missing primary argument. Use --root or --home.\033[0m" >&2
     show_help
 fi
-if [ -z "$action" ]; then
-    echo -e "\033[1mError: select --run or --dry-run.\033[0m" >&2
-    show_help
-fi
 
-if [ "$action" = "run" ]; then
-    dry_run=0
-else
-    dry_run=1
-fi
-
-if [ "$dry_run" -eq 0 ]; then
+if [ "$action" != "dry-run" ]; then
     if [ "${EUID:-$(id -u)}" -ne 0 ]; then
         echo "Root privilege is needed." >&2
         exit 1
     fi
 fi
 
-if [ "$list_files" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
+if [ "$list_files" -eq 1 ] && [ "$action" != "dry-run" ]; then
     echo -e "\033[1;31mError: --list-files can only be used with --dry-run.\033[0m" >&2
     show_help
 fi
 
 if [ "${#cli_file_list_excludes[@]}" -gt 0 ]; then
-    if [ "$list_files" -ne 1 ] || [ "$dry_run" -ne 1 ]; then
+    if [ "$list_files" -ne 1 ] || [ "$action" != "dry-run" ]; then
         echo -e "\033[1;31mError: --exclude can only be used with --home --dry-run --list-files.\033[0m" >&2
         show_help
     fi
 fi
 
-if [ "$progress_file" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
+if [ "$progress_file" -eq 1 ] && [ "$action" == "dry-run" ]; then
     echo -e "\033[1;31mError: --progress-file can only be used with --run.\033[0m" >&2
     show_help
 fi
 
-if [ "$progress_bar" -eq 1 ] && [ "$dry_run" -eq 1 ]; then
+if [ "$progress_bar" -eq 1 ] && [ "$action" == "dry-run" ]; then
     echo -e "\033[1;31mError: --progress-bar can only be used with --run.\033[0m" >&2
     show_help
 fi
@@ -175,8 +168,13 @@ if [ "$no_color_flag" -eq 1 ] && [ "$progress_file" -ne 1 ]; then
     show_help
 fi
 
-if [ -n "$snapshot_suffix" ] && [ "$dry_run" -eq 1 ]; then
+if [ -n "$snapshot_suffix" ] && [ "$action" == "dry-run" ]; then
     echo -e "\033[1;31mError: --snapshot_suffix can only be used with --run.\033[0m" >&2
+    show_help
+fi
+
+if [ "$list_snapshots" -eq 1 ] && [[ -n "$action" ]]; then
+    echo -e "\033[1;31mError: --list-snapshots can't be used with --run or --dry-run.\033[0m" >&2
     show_help
 fi
 
@@ -197,7 +195,10 @@ remount_snapshots_mountpoint() {
         sleep 0.5
     done
 }
-remount_snapshots_mountpoint rw
+
+if [[ -n "$action" ]]; then
+    remount_snapshots_mountpoint rw
+fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -221,7 +222,11 @@ load_excludes() {
 }
 
 cleanup_trap() {
-    if [ "$progress_bar" -eq 1 ] || [ "$dry_run" -eq 1 ]; then
+    if [ "$list_snapshots" -eq 1 ]; then
+        return
+    fi
+
+    if [ "$progress_bar" -eq 1 ] || [ "$action" == "dry-run" ]; then
         loading stop 
     fi
     rc=$?
@@ -231,7 +236,7 @@ cleanup_trap() {
     rm -f "$tmp_out" "$tmp_err"
 
     if [ -n "${last_signal:-}" ]; then # dry run cancel message
-        if [ "${last_signal}" = "INT" ] && [ "${dry_run:-1}" -eq 1 ]; then
+        if [ "${last_signal}" = "INT" ] && [ "$action" = "dry-run" ]; then
             sig_msg="Dry-run canceled."
         fi
     else
@@ -314,6 +319,37 @@ exclude_logs=(
     "backup_*.log"
 )
 
+    if [ "$list_snapshots" -eq 1 ]; then
+
+        echo -e 'Listing \033[1m'$name_prefix'\033[0m snapshots:\n'
+
+        echo -e "   Last symlink: $(readlink "${dest_base}/last")\n"
+
+        find "$dest_base" -maxdepth 1 -mindepth 1 -type d ! -name last -printf '%f\n' | awk -F'_' '
+        {
+            split($2, d, "-")
+
+            sortable = d[3] d[2] d[1] $3
+
+            suffix=""
+            for (i=4; i<=NF; i++) {
+                suffix = suffix (i>4 ? "_" : "") $i
+            }
+
+            time=$3
+            gsub("-", ":", time)
+
+            printf "%s    %s-%s-%s %s %s\n",
+                sortable,
+                d[1], d[2], d[3],
+                time,
+                suffix
+        }
+        ' | sort | cut -c15-
+
+        exit
+    fi
+
 if [ ! -d "$dest_base" ]; then
     echo "Destination $dest_base not found. Check mount point." >&2
     exit 1
@@ -340,7 +376,7 @@ if [ "$snapshot_found" -eq 1 ]; then
     fi
 else
     if [ ! -L "$dest_base/last" ] || [ ! -e "$dest_base/last" ]; then
-        if [ "$dry_run" -eq 1 ]; then
+        if [ "$action" == "dry-run" ]; then
             no_snapshots=1
             echo "No previous snapshots found. Performing first backup analysis and availability check."
         else
@@ -350,7 +386,7 @@ else
     fi
 fi
 
-if [ "$dry_run" -eq 1 ]; then
+if [ "$action" == "dry-run" ]; then
     snapshot_dir="$dest_base/.${name_prefix}_$(date "+%d-%m-%Y_%H-%M")"
 else
     if [ -n "$snapshot_suffix" ]; then
@@ -361,7 +397,7 @@ else
 fi
 mkdir -p "$snapshot_dir"
 
-if [ "$dry_run" -eq 0 ]; then
+if [ "$action" != "dry-run" ]; then
     logfile="$snapshot_dir/backup_$(date "+%d-%m-%Y_%H-%M").log"
     : >"$logfile"
     real_run=1
@@ -385,7 +421,7 @@ log_err() {
     fi
 }
 
-if [ "${dry_run:-1}" -eq 1 ]; then
+if [ "$action" = "dry-run" ]; then
     if [ "${no_snapshots:-0}" -eq 0 ]; then
         log "Performing dry-run. Use --run to actually copy."
     fi
@@ -502,8 +538,8 @@ summarize_rsync_output() {
     if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then      
         {
             echo -e "\n----- Backup summary -----"
-            echo "Files transfered: $transferred_count"
-            echo "Total size transfered: $(human_size "$total_bytes")"
+            echo "Files transferred: $transferred_count"
+            echo "Total size transferred: $(human_size "$total_bytes")"
             
             echo "---------------------------"
             echo
@@ -515,7 +551,7 @@ summarize_rsync_output() {
         avail_human=$(human_size "$avail_bytes")
 
         need_red=0
-        if [ "${dry_run:-0}" -eq 1 ]; then
+        if [ "$action" = "dry-run" ]; then
             if [ "${min_required:-0}" -gt "${avail_bytes:-0}" ]; then
                 need_red=1
             fi
@@ -637,7 +673,7 @@ filter_rsync_output() {
     ' "$1"
 }
 
-if [ "$dry_run" -eq 1 ]; then
+if [ "$action" == "dry-run" ]; then
     tmp_out=$(mktemp /tmp/backup_root.rsync.XXXXXX)
     if [ "${list_files:-0}" -eq 1 ]; then
         ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" -i --dry-run --out-format="%l %n" >"$tmp_out" 2>&1 || true # dry list
@@ -1032,7 +1068,7 @@ if [ "${real_run:-0}" -eq 1 ] && ([ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0
         cd "$dest_base/last"
         mkdir -p mnt tmp sys run proc dev home boot/efi || true
     fi  
-    if [ $progress_bar -eq 1 ] && [ $dry_run -eq 0 ]; then
+    if [ $progress_bar -eq 1 ] && [ "$action" != "dry-run" ]; then
         echo -e "\n" 
     fi    
     log "Backup finished and Link updated: $dest_base/last -> $snapshot_dir"  # implement error handling that comprehends other components more than just rsync exit code.
