@@ -202,8 +202,6 @@ if [[ -n "$action" ]]; then
     remount_snapshots_mountpoint rw
 fi
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 load_excludes() {
     local file="$1"
     local -n out_array=$2
@@ -249,7 +247,7 @@ cleanup_trap() {
         fail_msg="Backup failed with exit code ${rc}. This message shouldn't appear in any circumstance. debug needed."
     fi
 
-    if [ "${real_run:-0}" -eq 1 ]; then
+    if [ "$action" == "run" ]; then
         if [ -n "${last_signal:-}" ]; then
             if [ "${last_signal}" = "INT" ]; then
                 echo "${sig_msg}" | tee -a "${logfile}"
@@ -358,6 +356,8 @@ fi
 excludes_root=()
 excludes_home=()
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 load_excludes "$script_dir/exclude_root.conf" excludes_root
 load_excludes "$script_dir/exclude_home.conf" excludes_home
 
@@ -406,20 +406,17 @@ mkdir -p "$snapshot_dir"
 if [ "$action" != "dry-run" ]; then
     logfile="$snapshot_dir/backup_$(date "+%d-%m-%Y_%H-%M").log"
     : >"$logfile"
-    real_run=1
-else
-    real_run=0
 fi
 
 log() {
-    if [ "${real_run:-0}" -eq 1 ]; then
+    if [ "$action" == "run" ]; then
         printf '%s\n' "$*" | tee -a "$logfile"
     else
         printf '%s\n' "$*"
     fi
 }
 log_err() {
-    if [ "${real_run:-0}" -eq 1 ]; then
+    if [ "$action" == "run" ]; then
         printf '%s\n' "$*" >> "$logfile"
         printf '\033[31m%s\033[0m\n' "$*" >&2
     else
@@ -541,7 +538,7 @@ summarize_rsync_output() {
     rsync_total_bytes="$total_bytes"
     min_required=$(( total_bytes + total_bytes / 20 ))
 
-    if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then
+    if [ "$action" == "run" ] && [ -n "${logfile:-}" ]; then
         {
             echo -e "\n----- Backup summary -----"
             echo "Files transferred: $transferred_count"
@@ -575,7 +572,7 @@ summarize_rsync_output() {
         plain_summary+=$'---------------------------\n\n'
     fi
 
-    if [ "${real_run:-0}" -eq 1 ] && [ -n "${logfile:-}" ]; then
+    if [ "$action" == "run" ] && [ -n "${logfile:-}" ]; then
         printf '%s' "$plain_summary" >>"$logfile" || true
     else
         if [ -t 1 ]; then
@@ -1057,7 +1054,7 @@ fi
 set -e
 summarize_rsync_output "$tmp_out"
 
-if [ "${real_run:-0}" -eq 1 ] && [ -n "$logfile" ]; then
+if [ "$action" == "run" ] && [ -n "$logfile" ]; then
     {
         echo -e "\n----- Transfered files -----"
         grep -v "[0-9]\\+ files\\.\." "$tmp_out" | sort -k2
@@ -1066,7 +1063,7 @@ if [ "${real_run:-0}" -eq 1 ] && [ -n "$logfile" ]; then
 fi
 rm -f "$tmp_out"
 
-if [ "${real_run:-0}" -eq 1 ] && ([ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -eq 24 ]); then # err 24 = some files vanished -> not fatal, expected in some cases
+if [ "$action" == "run" ] && ([ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -eq 24 ]); then # err 24 = some files vanished -> not fatal, expected in some cases
     tmp_link="$dest_base/last_tmp"
     ln -s "$snapshot_dir" "$tmp_link"
     mv -T "$tmp_link" "$dest_base/last"
