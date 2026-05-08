@@ -314,16 +314,10 @@ else
     name_prefix="home"
 fi
 
-excludes_root=()
-excludes_home=()
-
-load_excludes "$script_dir/exclude_root.conf" excludes_root
-load_excludes "$script_dir/exclude_home.conf" excludes_home
-
-
-exclude_logs=(
-    "backup_*.log"
-)
+if [ ! -d "$dest_base" ]; then
+    echo "Destination $dest_base not found. Check mount point." >&2
+    exit 1
+fi
 
 if [ "$list_snapshots" -eq 1 ]; then
 
@@ -356,14 +350,20 @@ if [ "$list_snapshots" -eq 1 ]; then
     exit
 fi
 
-if [ ! -d "$dest_base" ]; then
-    echo "Destination $dest_base not found. Check mount point." >&2
-    exit 1
-fi
 if [ ! -w "$dest_base" ]; then
     echo "Destination $dest_base not writable. Check permissions." >&2
     exit 1
 fi
+
+excludes_root=()
+excludes_home=()
+
+load_excludes "$script_dir/exclude_root.conf" excludes_root
+load_excludes "$script_dir/exclude_home.conf" excludes_home
+
+exclude_logs=(
+    "backup_*.log"
+)
 
 snapshot_found=0
 if (shopt -s nullglob 2>/dev/null; set -- "$dest_base/${name_prefix}_"*; [ "$#" -gt 0 ]); then
@@ -859,10 +859,10 @@ if [ "$progress_bar" -eq 1 ]; then
     printf "\n"
 
     if [ -f "$tmp_err" ]; then
-        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent[[:space:]]+[0-9.,]+ bytes|^total size is' "$tmp_err" >> "$tmp_out" 2>/dev/null || true
+        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent[[:space:]]+[0-9.,]+ bytes|^total size is' "$tmp_err" >> "$tmp_out" 2>/dev/null
     fi
 
-    rm -f "$tmp_err" || true
+    rm -f "$tmp_err"
 elif [ "$progress_file" -eq 1 ]; then
     tmp_err=$(mktemp /tmp/backup_root.rsync.err.XXXXXX)
 
@@ -1034,22 +1034,22 @@ elif [ "$progress_file" -eq 1 ]; then
     wait "$rsync_pid"
     rsync_rc=$?
 
-    kill "$tail_pid" 2>/dev/null || true
-    wait "$tail_pid" 2>/dev/null || true
+    kill "$tail_pid" 2>/dev/null
+    wait "$tail_pid" 2>/dev/null
     tmp_combined=$(mktemp /tmp/backup_root.rsync.combined.XXXXXX)
-    cat "$tmp_out" > "$tmp_combined" || true
+    cat "$tmp_out" > "$tmp_combined"
 
     if [ -f "$tmp_err" ]; then
-        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent[[:space:]]+[0-9.,]+ bytes|^total size is' "$tmp_err" >> "$tmp_combined" 2>/dev/null || true
+        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent[[:space:]]+[0-9.,]+ bytes|^total size is' "$tmp_err" >> "$tmp_combined" 2>/dev/null
     fi
 
     if grep -qE 'xfr.|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" 2>/dev/null; then
         tmp_combined_filtered=$(mktemp /tmp/backup_root.rsync.combined.filtered.XXXXXX)
-        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" > "$tmp_combined_filtered" 2>/dev/null || true
-        mv "$tmp_combined_filtered" "$tmp_combined" || true
+        grep -vE 'xfr#|to-chk=|[0-9]+%|[0-9]+([\\.,][0-9]+)?(B|KB|MB|GB)/s|^Number of (files|created files|deleted files):|^Total file size:|^Literal data:|^Matched data:|^File list size:|^File list generation time:|^File list transfer time:|^Total bytes (sent|received):|^sent [0-9,]+ bytes|^total size is' "$tmp_combined" > "$tmp_combined_filtered" 2>/dev/null
+        mv "$tmp_combined_filtered" "$tmp_combined"
     fi
-    mv "$tmp_combined" "$tmp_out" || true
-    rm -f "$tmp_err" || true
+    mv "$tmp_combined" "$tmp_out"
+    rm -f "$tmp_err"
 else
     ionice -c2 -n7 nice -n 19 rsync "${rsync_opts[@]}" --out-format='%l %n' >"$tmp_out" 2>&1 # real normal, no output
     rsync_rc=$?
