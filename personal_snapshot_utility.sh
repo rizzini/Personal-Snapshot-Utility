@@ -325,36 +325,36 @@ exclude_logs=(
     "backup_*.log"
 )
 
-    if [ "$list_snapshots" -eq 1 ]; then
+if [ "$list_snapshots" -eq 1 ]; then
 
-        echo -e 'Listing \033[1m'$name_prefix'\033[0m snapshots:\n'
+    echo -e 'Listing \033[1m'$name_prefix'\033[0m snapshots:\n'
 
-        echo -e "   Last symlink: $(readlink "${dest_base}/last")\n"
+    echo -e "   Last symlink: $(readlink "${dest_base}/last")\n"
 
-        find "$dest_base" -maxdepth 1 -mindepth 1 -type d ! -name last -printf '%f\n' | awk -F'_' '
-        {
-            split($2, d, "-")
+    find -P "$dest_base" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | awk -F'_' '
+    {
+        split($2, d, "-")
 
-            sortable = d[3] d[2] d[1] $3
+        sortable = d[3] d[2] d[1] $3
 
-            suffix=""
-            for (i=4; i<=NF; i++) {
-                suffix = suffix (i>4 ? "_" : "") $i
-            }
-
-            time=$3
-            gsub("-", ":", time)
-
-            printf "%s    %s-%s-%s %s %s\n",
-                sortable,
-                d[1], d[2], d[3],
-                time,
-                suffix
+        suffix=""
+        for (i=4; i<=NF; i++) {
+            suffix = suffix (i>4 ? "_" : "") $i
         }
-        ' | sort | cut -c15-
 
-        exit
-    fi
+        time=$3
+        gsub("-", ":", time)
+
+        printf "%s    %s-%s-%s %s %s\n",
+            sortable,
+            d[1], d[2], d[3],
+            time,
+            suffix
+    }
+    ' | sort | cut -c15-
+
+    exit
+fi
 
 if [ ! -d "$dest_base" ]; then
     echo "Destination $dest_base not found. Check mount point." >&2
