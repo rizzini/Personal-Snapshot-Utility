@@ -134,7 +134,7 @@ if [ -z "$target_type" ]; then
     show_help
 fi
 
-if [ "$action" != "dry-run" ]; then
+if [[ $list_snapshots -eq 0 ]]; then
     if [ "${EUID:-$(id -u)}" -ne 0 ]; then
         echo "Root privilege is needed." >&2
         exit 1
@@ -178,11 +178,13 @@ if [ "$list_snapshots" -eq 1 ] && [[ -n "$action" ]]; then
     show_help
 fi
 
-exec 200>"$lockfile"
+if [[ "$list_snapshots" -eq 0 ]]; then
+    exec 200>"$lockfile"
 
-if ! flock -n 200; then
-    echo "Another backup instance is running (lock: $lockfile)." >&2
-    exit 1
+    if ! flock -n 200; then
+        echo "Another backup instance is running (lock: $lockfile)." >&2
+        exit 1
+    fi
 fi
 
 remount_snapshots_mountpoint() {
@@ -222,6 +224,8 @@ load_excludes() {
 }
 
 cleanup_trap() {
+    rc=$?
+
     if [ "$list_snapshots" -eq 1 ]; then
         return
     fi
@@ -229,9 +233,11 @@ cleanup_trap() {
     if [ "$progress_bar" -eq 1 ] || [ "$action" == "dry-run" ]; then
         loading stop 
     fi
-    rc=$?
-    flock -u 200 || true
-    rm -f "$lockfile"
+
+    if [[ "$list_snapshots" -eq 0 ]]; then
+        flock -u 200 || true
+        rm -f "$lockfile"
+    fi
 
     rm -f "$tmp_out" "$tmp_err"
 
