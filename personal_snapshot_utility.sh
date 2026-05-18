@@ -40,6 +40,8 @@ Options:
                     Example: ${BOLD}personal_snapshot_utility --home --dry-run --list-files --exclude=.mozilla/${RESET}
     --list-snapshots
         List all available snapshots for the selected target (--root or --home)
+    --delete-snapshot
+        Delete a snapshot for the selected target.  (--root or --home)
     --snapshot_suffix=NAME
         Adds a suffix to the snapshot name (use with care).
         Example: ${BOLD}personal_snapshot_utility --home --run --snapshot_suffix="MyCopy_01"${RESET}
@@ -65,6 +67,7 @@ arg_color=1
 no_color_flag=0
 cli_file_list_excludes=()
 list_snapshots=0
+delete_snapshot=0
 
 if [ "$#" -eq 0 ]; then
     show_help
@@ -77,6 +80,7 @@ for arg in "$@"; do
         --help|-h) show_help ;;
         --list-files) list_files=1 ;;
         --list-snapshots) list_snapshots=1 ;;
+        --delete-snapshot) delete_snapshot=1;;
         --no-color) arg_color=0; no_color_flag=1 ;;
         --snapshot_suffix=*) snapshot_suffix="${arg#*=}"; ;;
         --exclude=*) cli_file_list_excludes+=("${arg#*=}"); ;;
@@ -178,6 +182,11 @@ if [ "$list_snapshots" -eq 1 ] && [[ -n "$action" ]]; then
     show_help
 fi
 
+if [ "$delete_snapshot" -eq 1 ] && [[ -n "$action" ]]; then
+    echo -e "\033[1;31mError: --delete-snapshot can't be used with --run or --dry-run.\033[0m" >&2
+    show_help
+fi
+
 if [[ "$list_snapshots" -eq 0 ]]; then
     exec 200>"$lockfile"
 
@@ -224,7 +233,7 @@ load_excludes() {
 cleanup_trap() {
     rc=$?
 
-    if [ "$list_snapshots" -eq 1 ]; then
+    if [[ "$list_snapshots" -eq 1 || "$delete_snapshot" -eq 1 ]]; then
         return
     fi
 
@@ -344,6 +353,146 @@ if [ "$list_snapshots" -eq 1 ]; then
             suffix
     }
     ' | sort | cut -c15-
+
+    exit
+fi
+
+
+if [ "$delete_snapshot" -eq 1 ]; then
+
+    snapshot="$(find -P "$dest_base" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' |
+    awk -F'_' '
+    {
+        split($2, d, "-")
+
+        sortable = d[3] d[2] d[1] $3
+
+        suffix=""
+        for (i=4; i<=NF; i++) {
+            suffix = suffix (i>4 ? "_" : "") $i
+        }
+
+        time=$3
+        gsub("-", ":", time)
+
+        printf "%s    %s-%s-%s %s %s\n",
+            sortable,
+            d[1], d[2], d[3],
+            time,
+            suffix
+    }
+    ' | sort | cut -c15- | nl -w1 -s'|' | tee /dev/tty)"
+
+    read -rp "Choose a snapshot: " id
+
+    linha=$(echo "$snapshot" | sed -n "${id}p")
+
+
+    pasta="$(echo "$linha" | awk -F'|' -v prefix="$name_prefix" '
+    {
+        gsub(/^ +| +$/, "", $2)
+
+        split($2, a, " ")
+
+        data=a[1]
+        hora=a[2]
+
+        gsub(":", "-", hora)
+
+        pasta = prefix "_" data "_" hora
+
+        if (length(a[3]) > 0) {
+            sufixo = a[3]
+
+            for (i=4; i in a; i++) {
+                sufixo = sufixo "_" a[i]
+            }
+
+            pasta = pasta "_" sufixo
+        }
+
+        print pasta
+    }'
+    )"
+
+    snapshot_path="${dest_base}/${pasta}"
+
+    if [ ! -d "$snapshot_path" ]; then
+        echo "Snapshot not found: $snapshot_path"
+        exit 1
+    fi
+
+    echo
+    echo "Selected snapshot:"
+    echo "  $snapshot_path"
+    echo
+
+    read -rp "Confirm deletion? [y/N]: " confirm
+
+    case "$confirm" in
+        y|Y|yes|YES)
+
+            last_target=""
+
+            if [ -L "${dest_base}/last" ]; then
+                last_target="$(readlink -f "${dest_base}/last")"
+            fi
+
+            remount_snapshots_mountpoint rw
+
+            echo "Removing snapshot..."
+
+            rm -rf -- "$snapshot_path"
+
+            if [ $? -ne 0 ]; then
+                echo "Failed to remove snapshot."
+                exit 1
+            fi
+
+            echo "Snapshot removed successfully."
+
+            deleted_target="$(readlink -f "$snapshot_path" 2>/dev/null)"
+
+            if [ "$last_target" = "$snapshot_path" ]; then
+
+                newest_snapshot="$(
+                    find -P "$dest_base" \
+                        -maxdepth 1 \
+                        -mindepth 1 \
+                        -type d \
+                        -printf '%f\n' |
+                    awk -F'_' '
+                    {
+                        split($2, d, "-")
+                        print d[3] d[2] d[1] $3 "|" $0
+                    }
+                    ' |
+                    sort |
+                    tail -n1 |
+                    cut -d'|' -f2-
+                )"
+
+                rm -f "${dest_base}/last"
+
+                if [ -n "$newest_snapshot" ]; then
+                    ln -s "${dest_base}/${newest_snapshot}" "${dest_base}/last"
+
+                    echo
+                    echo "last symlink update:"
+                    echo "  ${dest_base}/last -> ${dest_base}/${newest_snapshot}"
+                else
+                    echo
+                    echo "No snapshots remaining. Removed last symlink."
+                fi
+            fi
+            ;;
+        *)
+            echo "Operation canceled."
+            exit 0
+            ;;
+    esac
+
+    remount_snapshots_mountpoint ro
 
     exit
 fi
