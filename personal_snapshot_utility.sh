@@ -440,16 +440,19 @@ if [ "$delete_snapshot" -eq 1 ]; then
 
             remount_snapshots_mountpoint rw
 
-            echo "Removing snapshot..."
+            loading start "Removing snapshot"
 
             rm -rf -- "$snapshot_path"
 
+            loading stop
+
             if [ $? -ne 0 ]; then
+
                 echo "Failed to remove snapshot."
                 exit 1
             fi
 
-            echo "Snapshot removed successfully."
+            echo -e "\nSnapshot removed successfully."
 
             deleted_target="$(readlink -f "$snapshot_path" 2>/dev/null)"
 
