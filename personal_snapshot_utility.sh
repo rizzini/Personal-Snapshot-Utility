@@ -357,7 +357,6 @@ if [ "$list_snapshots" -eq 1 ]; then
     exit
 fi
 
-
 if [ "$delete_snapshot" -eq 1 ]; then
 
     snapshot="$(find -P "$dest_base" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' |
@@ -448,11 +447,11 @@ if [ "$delete_snapshot" -eq 1 ]; then
 
             if [ $? -ne 0 ]; then
 
-                echo "Failed to remove snapshot."
+                echo -e "\n\n\033[0;31mFailed to remove snapshot.\033[0m"
                 exit 1
             fi
 
-            echo -e "\nSnapshot removed successfully."
+            echo -e "\n\n\033[0;32mSnapshot removed successfully.\033[0m"
 
             deleted_target="$(readlink -f "$snapshot_path" 2>/dev/null)"
 
@@ -1221,7 +1220,7 @@ if [ "$action" == "run" ] && ([ "${rsync_rc:-0}" -eq 0 ] || [ "${rsync_rc:-0}" -
     mv -T "$tmp_link" "$dest_base/last"
     if [[  "$dest_base" == *"root"* ]]; then
         cd "$dest_base/last"
-        mkdir -p mnt tmp sys run proc dev home boot/efi || true
+        mkdir -p mnt/backup /mnt/data /mnt/cdrom tmp sys run proc dev home boot || true
     fi
     if [ $progress_bar -eq 1 ] && [ "$action" != "dry-run" ]; then
         echo -e "\n"
