@@ -332,7 +332,9 @@ if [ "$list_snapshots" -eq 1 ]; then
 
     echo -e "   Last symlink: $(readlink "${dest_base}/last")\n"
 
-    find -P "$dest_base" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | awk -F'_' '
+    find -P "$dest_base" -maxdepth 1 -mindepth 1 -type d \
+        -name "${name_prefix}_[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]_[0-9][0-9]-[0-9][0-9]*" \
+        -printf '%f\n' | awk -F'_' '
     {
         split($2, d, "-")
 
@@ -359,7 +361,9 @@ fi
 
 if [ "$delete_snapshot" -eq 1 ]; then
 
-    snapshot="$(find -P "$dest_base" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' |
+    snapshot="$(find -P "$dest_base" -maxdepth 1 -mindepth 1 -type d \
+        -name "${name_prefix}_[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]_[0-9][0-9]-[0-9][0-9]*" \
+        -printf '%f\n' |
     awk -F'_' '
     {
         split($2, d, "-")
@@ -382,110 +386,125 @@ if [ "$delete_snapshot" -eq 1 ]; then
     }
     ' | sort | cut -c15- | nl -w1 -s'|' | tee /dev/tty)"
 
-    read -rp "Choose a snapshot: " id
+    echo
+    read -rp "Choose snapshot(s) to delete (e.g. 1 2 3 or 1-3): " input_ids
 
-    linha=$(echo "$snapshot" | sed -n "${id}p")
+    # Processa intervalos (ex: 1-3 -> 1 2 3) e entradas separadas por espaço
+    expanded_ids=()
+    for item in $input_ids; do
+        if [[ "$item" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+            start="${BASH_REMATCH[1]}"
+            end="${BASH_REMATCH[2]}"
+            if [ "$start" -le "$end" ]; then
+                for ((i=start; i<=end; i++)); do
+                    expanded_ids+=("$i")
+                done
+            else
+                for ((i=start; i>=end; i--)); do
+                    expanded_ids+=("$i")
+                done
+            fi
+        elif [[ "$item" =~ ^[0-9]+$ ]]; then
+            expanded_ids+=("$item")
+        fi
+    done
 
+    # Remove duplicados mantendo a ordem
+    ids=($(printf "%s\n" "${expanded_ids[@]}" | awk '!seen[$0]++'))
 
-    pasta="$(echo "$linha" | awk -F'|' -v prefix="$name_prefix" '
-    {
-        gsub(/^ +| +$/, "", $2)
+    if [ "${#ids[@]}" -eq 0 ]; then
+        echo "No valid selection made."
+        exit 1
+    fi
 
-        split($2, a, " ")
+    snapshots_to_delete=()
+    for id in "${ids[@]}"; do
+        linha=$(echo "$snapshot" | sed -n "${id}p")
+        if [ -z "$linha" ]; then
+            continue
+        fi
 
-        data=a[1]
-        hora=a[2]
-
-        gsub(":", "-", hora)
-
-        pasta = prefix "_" data "_" hora
-
-        if (length(a[3]) > 0) {
-            sufixo = a[3]
-
-            for (i=4; i in a; i++) {
-                sufixo = sufixo "_" a[i]
+        pasta="$(echo "$linha" | awk -F'|' -v prefix="$name_prefix" '
+        {
+            gsub(/^ +| +$/, "", $2)
+            split($2, a, " ")
+            data=a[1]
+            hora=a[2]
+            gsub(":", "-", hora)
+            pasta = prefix "_" data "_" hora
+            if (length(a[3]) > 0) {
+                sufixo = a[3]
+                for (i=4; i in a; i++) sufixo = sufixo "_" a[i]
+                pasta = pasta "_" sufixo
             }
+            print pasta
+        }')"
 
-            pasta = pasta "_" sufixo
-        }
+        snapshot_path="${dest_base}/${pasta}"
+        if [ -d "$snapshot_path" ]; then
+            snapshots_to_delete+=("$snapshot_path")
+        fi
+    done
 
-        print pasta
-    }'
-    )"
-
-    snapshot_path="${dest_base}/${pasta}"
-
-    if [ ! -d "$snapshot_path" ]; then
-        echo "Snapshot not found: $snapshot_path"
+    if [ "${#snapshots_to_delete[@]}" -eq 0 ]; then
+        echo "No matching snapshots found."
         exit 1
     fi
 
     echo
-    echo "Selected snapshot:"
-    echo "  $snapshot_path"
+    echo "Selected snapshot(s) for deletion:"
+    for s_path in "${snapshots_to_delete[@]}"; do
+        echo "  $s_path"
+    done
     echo
 
-    read -rp "Confirm deletion? [y/N]: " confirm
+    read -rp "Confirm deletion of ${#snapshots_to_delete[@]} snapshot(s)? [y/N]: " confirm
 
     case "$confirm" in
         y|Y|yes|YES)
-
-            last_target=""
-
-            if [ -L "${dest_base}/last" ]; then
-                last_target="$(readlink -f "${dest_base}/last")"
-            fi
-
             remount_snapshots_mountpoint rw
 
-            loading start "Removing snapshot"
+            for s_path in "${snapshots_to_delete[@]}"; do
+                loading start "Removing snapshot $(basename "$s_path")"
+                rm -rf -- "$s_path"
+                loading stop
 
-            rm -rf -- "$snapshot_path"
-
-            loading stop
-
-            if [ $? -ne 0 ]; then
-
-                echo -e "\n\n\033[0;31mFailed to remove snapshot.\033[0m"
-                exit 1
-            fi
-
-            echo -e "\n\n\033[0;32mSnapshot removed successfully.\033[0m"
-
-            deleted_target="$(readlink -f "$snapshot_path" 2>/dev/null)"
-
-            if [ "$last_target" = "$snapshot_path" ]; then
-
-                newest_snapshot="$(
-                    find -P "$dest_base" \
-                        -maxdepth 1 \
-                        -mindepth 1 \
-                        -type d \
-                        -printf '%f\n' |
-                    awk -F'_' '
-                    {
-                        split($2, d, "-")
-                        print d[3] d[2] d[1] $3 "|" $0
-                    }
-                    ' |
-                    sort |
-                    tail -n1 |
-                    cut -d'|' -f2-
-                )"
-
-                rm -f "${dest_base}/last"
-
-                if [ -n "$newest_snapshot" ]; then
-                    ln -s "${dest_base}/${newest_snapshot}" "${dest_base}/last"
-
-                    echo
-                    echo "last symlink update:"
-                    echo "  ${dest_base}/last -> ${dest_base}/${newest_snapshot}"
+                if [ $? -ne 0 ]; then
+                    echo -e "\n\033[0;31mFailed to remove snapshot: $s_path\033[0m"
                 else
-                    echo
-                    echo "No snapshots remaining. Removed last symlink."
+                    echo -e "\n\033[0;32mSnapshot removed: $(basename "$s_path")\033[0m"
                 fi
+            done
+
+            # Atualização rigorosa do symlink 'last' apontando SEMPRE para o snapshot mais recente restante
+            newest_snapshot="$(
+                find -P "$dest_base" \
+                    -maxdepth 1 \
+                    -mindepth 1 \
+                    -type d \
+                    -name "${name_prefix}_[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]_[0-9][0-9]-[0-9][0-9]*" \
+                    -printf '%f\n' |
+                awk -F'_' '
+                {
+                    split($2, d, "-")
+                    print d[3] d[2] d[1] $3 "|" $0
+                }
+                ' |
+                sort |
+                tail -n1 |
+                cut -d'|' -f2-
+            )"
+
+            rm -f "${dest_base}/last"
+
+            if [ -n "$newest_snapshot" ]; then
+                ln -s "${dest_base}/${newest_snapshot}" "${dest_base}/last"
+                echo
+                echo "last symlink update:"
+                echo "  ${dest_base}/last -> ${dest_base}/${newest_snapshot}"
+            else
+                echo
+                echo "No snapshots remaining. Removed last symlink."
             fi
             ;;
         *)
@@ -495,7 +514,6 @@ if [ "$delete_snapshot" -eq 1 ]; then
     esac
 
     remount_snapshots_mountpoint ro
-
     exit
 fi
 
