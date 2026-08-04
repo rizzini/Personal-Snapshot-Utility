@@ -187,6 +187,11 @@ if [ "$delete_snapshot" -eq 1 ] && [[ -n "$action" ]]; then
     show_help
 fi
 
+if [ -z "$action" ] && [ "$list_snapshots" -eq 0 ] && [ "$delete_snapshot" -eq 0 ]; then
+    echo -e "\033[1mError: missing primary argument. Use --run or --dry-run.\033[0m" >&2
+    show_help
+fi
+
 if [[ "$list_snapshots" -eq 0 ]]; then
     exec 200>"$lockfile"
 
